@@ -35,6 +35,7 @@
     </aside>
 
     <main class="auth-main">
+      <button class="theme-toggle auth-theme-toggle" type="button" data-theme-toggle aria-label="Activar modo oscuro"><span class="theme-icon" data-theme-icon>☾</span><span data-theme-label>Modo oscuro</span></button>
       <div class="auth-card">
         <div class="auth-card-heading">
           <span class="eyebrow">Bienvenido a Nexo SST</span>
@@ -93,6 +94,22 @@
         <button type="button" class="side-link" data-view="company"><span class="nav-icon">▤</span><span>Mi empresa</span></button>
         <button type="button" class="side-link" data-view="employees"><span class="nav-icon">♙</span><span>Personal</span><span id="employee-nav-count" class="nav-count">0</span></button>
         <button type="button" class="side-link" data-view="tasks"><span class="nav-icon">✓</span><span>Tareas</span><span id="task-nav-count" class="nav-count">0</span></button>
+        <div class="nav-caption nav-caption-inline">MÓDULOS DE SST</div>
+        <button type="button" class="side-link" data-module="iperc"><span class="nav-icon">▧</span><span>IPERC y riesgos</span><span class="nav-count" data-module-count="iperc">0</span></button>
+        <button type="button" class="side-link" data-module="epp"><span class="nav-icon">⬡</span><span>Entrega de EPP</span><span class="nav-count" data-module-count="epp">0</span></button>
+        <button type="button" class="side-link" data-module="committee"><span class="nav-icon">♧</span><span>Comité SST</span><span class="nav-count" data-module-count="committee">0</span></button>
+        <button type="button" class="side-link" data-module="incidents"><span class="nav-icon">!</span><span>Incidentes</span><span class="nav-count" data-module-count="incidents">0</span></button>
+        <button type="button" class="side-link" data-module="inspections"><span class="nav-icon">⌕</span><span>Inspecciones y mapa</span><span class="nav-count" data-module-count="inspections">0</span></button>
+        <button type="button" class="side-link" data-module="emergency"><span class="nav-icon">◇</span><span>Emergencias</span><span class="nav-count" data-module-count="emergency">0</span></button>
+        <button type="button" class="side-link" data-module="management_docs"><span class="nav-icon">▤</span><span>Plan anual y RISST</span><span class="nav-count" data-module-count="management_docs">0</span></button>
+        <button type="button" class="side-link" data-module="audit_followup"><span class="nav-icon">↗</span><span>Auditorías y monitoreo</span><span class="nav-count" data-module-count="audit_followup">0</span></button>
+        <button type="button" class="side-link" data-module="exam_schedule"><span class="nav-icon">◷</span><span>Exámenes · agenda</span><span class="nav-count" data-module-count="exam_schedule">0</span></button>
+        <button type="button" class="side-link" data-module="training"><span class="nav-icon">▣</span><span>Capacitaciones</span><span class="nav-count" data-module-count="training">0</span></button>
+        <button type="button" class="side-link" data-module="participation"><span class="nav-icon">☷</span><span>Participación</span><span class="nav-count" data-module-count="participation">0</span></button>
+        <div class="nav-caption nav-caption-inline">HERRAMIENTAS</div>
+        <button type="button" class="side-link" data-view="health"><span class="nav-icon">♡</span><span>Vigilancia de salud</span></button>
+        <button type="button" class="side-link" data-view="evidence"><span class="nav-icon">▧</span><span>Carpeta de evidencia</span></button>
+        <button type="button" class="side-link" data-view="roi"><span class="nav-icon">◌</span><span>Horas que vuelven</span></button>
       </nav>
       <div class="sidebar-bottom">
         <div class="help-card"><div class="help-icon">✦</div><b>Un paso a la vez</b><p>Completa tu perfil y añade las primeras tareas de seguimiento.</p><button type="button" data-view="company">Revisar mi empresa <span>→</span></button></div>
@@ -103,7 +120,7 @@
     <main class="workspace">
       <header class="topbar">
         <div class="topbar-left"><button id="mobile-nav-open" class="icon-button mobile-open" type="button" aria-label="Abrir menú">☰</button><div><span class="breadcrumb">Nexo SST <span>/</span> <b id="breadcrumb-current">Resumen</b></span><h1 id="page-title">Resumen</h1></div></div>
-        <div class="topbar-right"><span class="secure-chip"><i></i> Datos privados de tu empresa</span><span id="topbar-avatar" class="top-avatar">U</span></div>
+        <div class="topbar-right"><button class="theme-toggle" type="button" data-theme-toggle aria-label="Activar modo oscuro"><span class="theme-icon" data-theme-icon>☾</span><span data-theme-label>Noche</span></button><span class="secure-chip"><i></i> Datos privados de tu empresa</span><span id="topbar-avatar" class="top-avatar">U</span></div>
       </header>
       <div id="global-message" class="global-message hidden" role="status" aria-live="polite"></div>
 
@@ -119,7 +136,8 @@
           <section class="panel task-panel"><div class="panel-heading"><div><span class="panel-kicker">SEGUIMIENTO</span><h3>Tareas próximas</h3></div><button class="inline-link" type="button" data-view="tasks">Ver todas <span>→</span></button></div><div id="dashboard-task-list" class="compact-list"></div><div id="dashboard-empty" class="empty-state compact-empty hidden"><span class="empty-symbol">✓</span><b>Aún no hay tareas</b><p>Crea una tarea para empezar a organizar el seguimiento.</p><button type="button" class="button secondary small-button" data-view="tasks">Crear primera tarea</button></div></section>
           <section class="panel company-panel"><div class="panel-heading"><div><span class="panel-kicker">IDENTIDAD</span><h3>Tu empresa</h3></div><button class="round-link" type="button" data-view="company" aria-label="Editar empresa">↗</button></div><div class="company-summary"><span id="dashboard-company-initials" class="company-hero-mark">N</span><div><b id="dashboard-company-name">Mi empresa</b><small id="dashboard-company-sector">Completa tu perfil</small></div></div><div class="summary-row"><span>RUC</span><b id="dashboard-company-ruc">—</b></div><div class="summary-row"><span>Trabajadores</span><b id="dashboard-company-employees">0</b></div><div class="summary-row"><span>Contacto</span><b id="dashboard-company-contact">—</b></div><button type="button" class="button secondary full-button" data-view="company">Ver datos de empresa <span>→</span></button></section>
         </div>
-        <div class="notice-bar"><span class="notice-bar-icon">ⓘ</span><span><b>Alcance de esta versión:</b> perfil de empresa, directorio básico y tareas. No almacenes exámenes, diagnósticos ni historias clínicas.</span></div>
+        <section class="panel quick-modules-panel"><div class="panel-heading"><div><span class="panel-kicker">ACCESOS RÁPIDOS</span><h3>Módulos de tu sistema de SST</h3></div></div><div id="dashboard-module-shortcuts" class="quick-modules"></div></section>
+        <div class="notice-bar"><span class="notice-bar-icon">ⓘ</span><span><b>Privacidad:</b> no ingreses diagnósticos, resultados clínicos ni historias médicas. Exámenes se limita a programación y seguimiento administrativo.</span></div>
       </section>
 
       <section id="view-company" class="view-section hidden">
@@ -165,7 +183,57 @@
         <div id="task-empty" class="panel empty-state hidden"><span class="empty-symbol">✓</span><b>No hay tareas en esta vista</b><p>Agrega una tarea para comenzar tu seguimiento.</p><button type="button" id="empty-add-task" class="button secondary small-button">＋ Crear tarea</button></div>
       </section>
 
-      <footer class="workspace-footer"><span>Nexo SST · MVP de administración</span><span>No ingresar información médica ni sensible.</span></footer>
+      <section id="view-module" class="view-section hidden">
+        <div class="view-intro view-intro-row"><div><span id="module-eyebrow" class="eyebrow">MÓDULO SST</span><h2 id="module-title">IPERC y riesgos</h2><p id="module-description">Ordena registros y evidencia.</p></div><button id="toggle-record-form" type="button" class="button primary">＋ Nuevo registro</button></div>
+        <div id="module-privacy-note" class="module-privacy-note hidden"></div>
+        <div class="module-stat-row"><div class="module-stat"><small>Registros del módulo</small><b id="module-record-total">0</b></div><div class="module-stat"><small>Pendientes</small><b id="module-record-open">0</b></div><div class="module-stat"><small>Vencidos</small><b id="module-record-overdue">0</b></div><span id="module-action-hint">Adjunta documentos para mantener la evidencia junto al registro.</span></div>
+        <form id="record-form" class="panel inline-create hidden">
+          <div class="form-panel-heading"><div><h3 id="record-form-title">Nuevo registro</h3><p id="record-form-hint">Completa los datos y guarda.</p></div><button type="button" id="cancel-record" class="icon-button" aria-label="Cerrar formulario">×</button></div>
+          <input type="hidden" name="id">
+          <div class="form-grid compact-grid">
+            <div class="field"><label for="record-title">Título *</label><input id="record-title" name="title" required placeholder="Nombre del registro o actividad"></div>
+            <div class="field"><label for="record-category">Tipo / categoría</label><input id="record-category" name="category" placeholder="Ej.: sede, proceso o tema"></div>
+            <div class="field"><label for="record-responsible">Responsable</label><input id="record-responsible" name="responsible" placeholder="Área o responsable"></div>
+            <div class="field"><label for="record-due-date">Fecha de seguimiento</label><input id="record-due-date" name="due_date" type="date"></div>
+            <div class="field"><label for="record-status">Estado</label><select id="record-status" name="status"><option value="pending">Pendiente</option><option value="in_progress">En curso</option><option value="done">Completado</option></select></div>
+            <div class="field"><label for="record-priority">Prioridad</label><select id="record-priority" name="priority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></div>
+            <div class="field full-field"><label for="record-notes">Notas administrativas</label><textarea id="record-notes" name="notes" rows="3" placeholder="Describe el seguimiento. No ingreses datos médicos ni diagnósticos."></textarea></div>
+            <div id="record-file-wrap" class="field full-field"><label for="record-file">Adjuntar evidencia (máx. 15 MB)</label><input id="record-file" name="file" type="file" accept=".pdf,.xls,.xlsx,.csv,.docx,.jpg,.jpeg,.png"><small id="record-file-help">Archivos privados, disponibles solo para tu cuenta.</small></div>
+          </div>
+          <div class="form-actions"><button type="button" id="cancel-record-text" class="button secondary">Cancelar</button><button class="button primary" type="submit">Guardar registro</button></div>
+        </form>
+        <div class="panel table-panel"><div class="panel-heading"><div><span class="panel-kicker">REGISTROS DE LA EMPRESA</span><h3>Elementos guardados <span id="record-count-label" class="count-badge">0</span></h3></div><div class="search-box"><span>⌕</span><input id="record-search" type="search" placeholder="Buscar…" aria-label="Buscar registros"></div></div><div class="table-scroll"><table><thead><tr><th>REGISTRO</th><th>TIPO</th><th>RESPONSABLE</th><th>FECHA</th><th>ESTADO</th><th>ARCHIVO</th><th class="actions-cell">ACCIONES</th></tr></thead><tbody id="record-table-body"></tbody></table></div><div id="record-empty" class="empty-state hidden"><span class="empty-symbol">▤</span><b>Aún no hay registros en este módulo</b><p>Agrega un registro para empezar a organizar la evidencia.</p><button type="button" id="empty-add-record" class="button secondary small-button">＋ Crear registro</button></div></div>
+      </section>
+
+      <section id="view-health" class="view-section hidden">
+        <div class="view-intro"><span class="eyebrow">SALUD OCUPACIONAL</span><h2>Vigilancia de la salud</h2><p>Consulta la agenda administrativa y las funciones previstas para vigilancia.</p></div>
+        <div class="health-privacy-banner"><span class="health-shield">♡</span><div><b>Datos de salud con protección reforzada</b><p>Esta versión no almacena resultados, diagnósticos, aptitudes individuales ni historias clínicas. La agenda disponible solo sirve para organizar actividades administrativas.</p></div></div>
+        <div class="health-module-grid"><article class="panel health-module-card"><span class="module-icon">◷</span><span class="panel-kicker">AGENDA</span><h3>Programación de exámenes</h3><p>Registra fechas y coordinaciones por grupo o sede; no adjuntes informes médicos.</p><button type="button" class="button secondary" data-module="exam_schedule">Abrir agenda →</button></article><article class="panel health-module-card"><span class="module-icon">⌕</span><span class="panel-kicker">LEO · LECTOR PDF</span><h3>Revisión asistida</h3><p>La lectura OCR, validación de campos y salto a página aún no están conectados en esta plataforma.</p><span class="roadmap-tag">EN DESARROLLO · NO SUBIR EMO</span></article><article class="panel health-module-card"><span class="module-icon">▥</span><span class="panel-kicker">VIGILANCIA AGREGADA</span><h3>Indicadores de salud</h3><p>La línea de tiempo, laboratorio, audición y cortes demográficos requieren permisos clínicos y validación profesional.</p><span class="roadmap-tag">VISTA DEMOSTRATIVA</span></article></div>
+        <div class="panel privacy-checklist"><div><span class="panel-kicker">ANTES DE ACTIVAR ESTOS MÓDULOS</span><h3>Controles necesarios para uso clínico real</h3></div><div class="privacy-items"><span>Roles de salud autorizados</span><span>Registro de accesos y auditoría</span><span>Política de retención y eliminación</span><span>Consentimiento y revisión legal</span></div></div>
+      </section>
+
+      <section id="view-evidence" class="view-section hidden">
+        <div class="view-intro view-intro-row"><div><span class="eyebrow">PREPARACIÓN DOCUMENTAL</span><h2>Carpeta de evidencia</h2><p>Revisa los registros de tus módulos y prepara un resumen imprimible.</p></div><div class="evidence-actions"><button id="export-evidence" type="button" class="button secondary">Descargar CSV</button><button id="print-evidence" type="button" class="button primary">Imprimir resumen</button></div></div>
+        <div class="notice-bar"><span class="notice-bar-icon">ⓘ</span><span>Este resumen organiza información; no estima multas ni garantiza cumplimiento. La revisión y respuesta siguen a cargo de la empresa.</span></div>
+        <section class="panel request-panel" aria-labelledby="request-panel-title">
+          <div class="request-panel-heading"><div><span class="panel-kicker">PREPARACIÓN DE REQUERIMIENTO</span><h3 id="request-panel-title">Checklist documental</h3><p>Calcula una fecha objetivo orientativa y revisa qué evidencia has cargado.</p></div><span class="request-stamp">SST</span></div>
+          <div class="request-controls">
+            <div class="field"><label for="request-letter-date">Fecha de recepción</label><input id="request-letter-date" type="date"></div>
+            <div class="field"><label for="request-business-days">Plazo en días hábiles</label><input id="request-business-days" type="number" min="0" max="365" value="5"></div>
+            <div id="request-deadline" class="request-deadline" aria-live="polite"></div>
+          </div>
+          <div id="sunafil-checklist" class="sunafil-checklist"></div>
+          <p class="request-disclaimer">El cálculo excluye feriados y no sustituye la revisión de la carta ni del plazo legal aplicable. Para exámenes, esta versión solo permite agenda administrativa: no cargues EMO, resultados ni diagnósticos.</p>
+        </section>
+        <div id="evidence-report" class="panel evidence-report"></div>
+      </section>
+
+      <section id="view-roi" class="view-section hidden">
+        <div class="view-intro"><span class="eyebrow">ESTIMACIÓN REFERENCIAL</span><h2>Horas que podrían volver a tu equipo</h2><p>Modifica los supuestos para estimar el valor del trabajo manual que podrías reducir.</p></div>
+        <div class="panel roi-app-card"><div class="roi-input-grid"><div class="field"><label for="app-rrhh-hours">Horas mensuales de RR. HH.</label><input id="app-rrhh-hours" type="number" min="0" value="20"></div><div class="field"><label for="app-rrhh-cost">Costo por hora · S/</label><input id="app-rrhh-cost" type="number" min="0" step="0.5" value="25"></div><div class="field"><label for="app-sst-hours">Horas mensuales de SST</label><input id="app-sst-hours" type="number" min="0" value="36"></div><div class="field"><label for="app-sst-cost">Costo por hora · S/</label><input id="app-sst-cost" type="number" min="0" step="0.5" value="13"></div><div class="field"><label for="app-health-hours">Horas mensuales de salud ocupacional</label><input id="app-health-hours" type="number" min="0" value="8"></div><div class="field"><label for="app-health-cost">Costo por hora · S/</label><input id="app-health-cost" type="number" min="0" step="0.5" value="60"></div><div class="field"><label for="app-saved-percent">Trabajo manual potencialmente reducido · %</label><input id="app-saved-percent" type="number" min="0" max="100" value="70"></div></div><div class="roi-result-box"><div><small>Estimación anual referencial</small><strong id="app-roi-value">S/ 0</strong></div><span id="app-roi-hours">0 horas potenciales al año</span></div><p class="roi-note">Estimación editable; no es promesa de ahorro ni cotización. Considera solo los supuestos ingresados.</p></div>
+      </section>
+
+      <footer class="workspace-footer"><span>Nexo SST · Gestión administrativa de SST</span><span>No ingresar diagnósticos ni resultados médicos en esta versión.</span></footer>
     </main>
   </div>
 
