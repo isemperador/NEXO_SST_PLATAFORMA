@@ -181,3 +181,66 @@
 @media(max-width:720px){.request-controls{grid-template-columns:1fr 1fr}.request-deadline{grid-column:1/-1}.sunafil-checklist{grid-template-columns:1fr}}
 @media(max-width:480px){.request-panel{padding:14px}.request-controls{grid-template-columns:1fr}.request-deadline{grid-column:auto}.checklist-progress-track{width:26%}}
 :root[data-theme="dark"] .button.primary,:root[data-theme="dark"] .button.primary:hover{color:#082b28}
+
+/* IPERC matrix versions and structured hazard/control register */
+.iperc-workbench{display:grid;gap:13px;margin:0 0 14px}
+.iperc-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.iperc-summary-card{display:grid;gap:3px;padding:12px 14px;border:1px solid var(--line);border-radius:11px;background:var(--white)}
+.iperc-summary-card small{color:var(--muted);font-size:8px}
+.iperc-summary-card b{font-size:21px;line-height:1.2}
+.iperc-summary-card span{color:var(--muted);font-size:8px}
+.iperc-matrices-panel,.iperc-risk-panel{padding:17px;overflow:hidden}
+.iperc-matrices-panel .panel-heading,.iperc-risk-panel .panel-heading{margin:0;padding-bottom:12px}
+.iperc-matrices-panel .panel-heading h3,.iperc-risk-panel .panel-heading h3{margin:4px 0 0;font-size:13px}
+.iperc-matrices-panel .panel-heading .button,.iperc-risk-panel .panel-heading .button{min-height:36px;padding-inline:12px;font-size:9px}
+.iperc-form{padding:15px 0 4px;margin-top:13px;border-top:1px solid var(--line)}
+.iperc-form .form-panel-heading{margin-bottom:13px}
+.iperc-form .form-actions{margin-top:14px;padding-top:12px}
+.iperc-version-list{display:grid;gap:8px;margin-top:13px}
+.iperc-version-card{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 13px;border:1px solid var(--line);border-radius:11px;background:var(--white);transition:border-color .15s,background .15s}
+.iperc-version-card.selected{border-color:#74bfb0;box-shadow:0 0 0 2px rgba(25,183,165,.08)}
+.iperc-version-card.historical{background:var(--paper)}
+.iperc-version-main{min-width:0;flex:1}
+.iperc-version-heading{display:flex;align-items:center;flex-wrap:wrap;gap:7px}
+.iperc-select-title{max-width:420px;overflow:hidden;border:0;background:transparent;color:var(--ink);font-size:11px;font-weight:850;text-align:left;text-overflow:ellipsis;white-space:nowrap}
+.iperc-select-title:hover{color:var(--teal);text-decoration:underline}
+.iperc-version-chip,.iperc-current-chip{display:inline-flex;padding:4px 7px;border-radius:6px;background:var(--mint);color:var(--teal);font-size:7px;font-weight:850;letter-spacing:.02em}
+.iperc-current-chip{background:#eef2f1;color:var(--muted)}
+.iperc-current-chip.is-current{background:#e7f6ef;color:#3c846d}
+.iperc-version-meta{display:flex;flex-wrap:wrap;gap:5px 12px;margin-top:5px;color:var(--muted);font-size:8px}
+.iperc-version-foot{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:7px}
+.iperc-review-pill{display:inline-flex;padding:4px 7px;border-radius:99px;background:#eaf7f0;color:#3a836c;font-size:7px;font-weight:800}
+.iperc-review-pill.soon{background:#fff4df;color:#946e30}
+.iperc-review-pill.overdue{background:#fff0ec;color:#b04f3a}
+.iperc-review-pill.no-date{background:#f1f3f2;color:#7f8d91}
+.iperc-file-link,.iperc-action-link{border:0;background:transparent;color:var(--teal);font-size:8px;font-weight:800}
+.iperc-file-link{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.iperc-file-link:hover,.iperc-action-link:hover{text-decoration:underline}
+.iperc-version-actions{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}
+.iperc-readonly-label{color:var(--muted);font-size:7px;font-style:italic;white-space:nowrap}
+.iperc-selected-meta{margin:4px 0 0;color:var(--muted);font-size:8px}
+.iperc-scale-note{margin:4px 0 11px;padding:9px 11px;border:1px solid #d9ebe4;border-radius:9px;background:#f1faf5;color:#416d61;font-size:8px;line-height:1.55}
+.iperc-risk-table-wrap{margin-top:10px}
+.iperc-risk-table{width:100%;min-width:880px;border-collapse:collapse}
+.iperc-risk-table th{padding:9px 8px;background:var(--paper);color:var(--muted);font-size:7px;letter-spacing:.06em;text-align:left}
+.iperc-risk-table td{padding:10px 8px;border-bottom:1px solid var(--line);color:var(--ink);font-size:8px;vertical-align:top}
+.iperc-risk-table tbody tr:last-child td{border-bottom:0}
+.iperc-risk-table td b{display:block;color:var(--ink);font-size:8px}
+.iperc-risk-table td small{display:block;margin-top:3px;color:var(--muted);font-size:7px;line-height:1.4}
+.iperc-table-notes{display:-webkit-box;max-width:220px;overflow:hidden;color:var(--muted);font-size:7px;line-height:1.45;-webkit-line-clamp:4;-webkit-box-orient:vertical}
+.overdue-text{color:#b04f3a!important}
+.iperc-overdue-status{background:#fff0ec!important;color:#b04f3a!important}
+.iperc-legacy-note{padding:10px 12px;border:1px dashed var(--line);border-radius:9px;color:var(--muted);font-size:8px}
+:root[data-theme="dark"] .iperc-version-card.historical{background:#131e23}
+:root[data-theme="dark"] .iperc-version-chip,:root[data-theme="dark"] .iperc-current-chip.is-current{background:#1d3937;color:#80ddcb}
+:root[data-theme="dark"] .iperc-current-chip{background:#2b3539;color:#a7b6ba}
+:root[data-theme="dark"] .iperc-review-pill{background:#1c3c32;color:#7bd3ad}
+:root[data-theme="dark"] .iperc-review-pill.soon{background:#413923;color:#e3bf72}
+:root[data-theme="dark"] .iperc-review-pill.overdue,:root[data-theme="dark"] .iperc-overdue-status{background:#482c2b!important;color:#f0a292!important}
+:root[data-theme="dark"] .iperc-scale-note{background:#1c332e;border-color:#31564d;color:#add9ca}
+:root[data-theme="dark"] .iperc-risk-table th{background:#1b2a30;color:#9cabb0}
+@media(max-width:800px){.iperc-version-card{align-items:flex-start;flex-direction:column}.iperc-version-actions{justify-content:flex-start;width:100%}.iperc-summary-card{padding:10px}.iperc-risk-panel .panel-heading{align-items:flex-start}}
+@media(max-width:560px){.iperc-summary-grid{grid-template-columns:1fr}.iperc-summary-card{grid-template-columns:1fr auto;align-items:center}.iperc-summary-card span{grid-column:1/-1}.iperc-matrices-panel,.iperc-risk-panel{padding:13px}.iperc-version-actions .iperc-action-link{padding:5px 0}.iperc-version-meta{display:grid;gap:3px}.iperc-version-heading{align-items:flex-start}.iperc-select-title{max-width:100%;white-space:normal}}
+.iperc-heading-actions{display:flex;align-items:center;gap:7px;flex:0 0 auto}
+:root[data-theme="dark"] .iperc-heading-actions .button.secondary{color:#c4d2d5}
+@media(max-width:720px){.iperc-heading-actions{width:100%;justify-content:flex-start}.iperc-heading-actions .button{flex:1}}

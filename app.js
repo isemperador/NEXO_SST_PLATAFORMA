@@ -9,7 +9,7 @@
   const STORAGE_BUCKET = 'sst-documents';
   const MAX_UPLOAD_SIZE = 15 * 1024 * 1024;
   const MODULES = {
-    iperc: { title: 'IPERC y riesgos', eyebrow: 'IDENTIFICACIÓN DE PELIGROS', description: 'Carga tu matriz PDF o Excel y organiza manualmente sus revisiones, versiones y controles.', upload: true, requiredFile: true, accept: '.pdf,.xls,.xlsx,.csv', fileHelp: 'Adjunta la matriz en PDF, Excel o CSV. Máximo 15 MB.' },
+    iperc: { title: 'IPERC y riesgos', eyebrow: 'IDENTIFICACIÓN DE PELIGROS', description: 'Carga versiones de tu matriz, controla fechas de revisión y registra peligros y controles por puesto usando la escala de tu empresa.', upload: true, requiredFile: true, accept: '.pdf,.xls,.xlsx,.csv', fileHelp: 'Adjunta la matriz en PDF, Excel o CSV. Máximo 15 MB.' },
     epp: { title: 'Entrega y reposición de EPP', eyebrow: 'EQUIPOS DE PROTECCIÓN', description: 'Organiza entregas y reposiciones con constancias adjuntas; no incluye firma digital del trabajador.', upload: true, accept: '.pdf,.xlsx,.csv,.jpg,.jpeg,.png', fileHelp: 'Adjunta constancias o evidencias administrativas; evita datos médicos.' },
     committee: { title: 'Comité de SST', eyebrow: 'COMITÉ Y ACUERDOS', description: 'Da seguimiento a fechas, actas y acuerdos; elecciones, votos y firmas aún no están conectados.', upload: true, accept: '.pdf,.docx,.xlsx,.csv,.jpg,.jpeg,.png', fileHelp: 'Adjunta actas o documentos del Comité. No se registran votos individuales.' },
     incidents: { title: 'Incidentes y acciones', eyebrow: 'REPORTE Y SEGUIMIENTO', description: 'Organiza reportes, investigaciones y medidas correctivas sin guardar diagnósticos ni resultados clínicos.', upload: true, accept: '.pdf,.docx,.xlsx,.csv,.jpg,.jpeg,.png', fileHelp: 'Sube evidencia operativa. No incluyas diagnósticos ni información clínica.' },
@@ -40,6 +40,11 @@
   let employees = [];
   let tasks = [];
   let sstRecords = [];
+  let ipercMatrices = [];
+  let ipercHazards = [];
+  let selectedIpercMatrixId = null;
+  let currentEditingIpercMatrix = null;
+  let currentEditingIpercRisk = null;
   let currentModuleKey = 'iperc';
   let currentEditingRecord = null;
   let taskFilter = 'all';
@@ -342,18 +347,25 @@
     company = await ensureCompany(user);
     if (company) {
       const companyId = encodeURIComponent(company.id);
-      const [employeeRows, taskRows, recordRows] = await Promise.all([
+      const [employeeRows, taskRows, recordRows, matrixRows, hazardRows] = await Promise.all([
         restRequest('employees', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
         restRequest('tasks', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
-        restRequest('sst_records', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` })
+        restRequest('sst_records', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
+        restRequest('iperc_matrices', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
+        restRequest('iperc_hazards', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` })
       ]);
       employees = employeeRows || [];
       tasks = taskRows || [];
       sstRecords = recordRows || [];
+      ipercMatrices = matrixRows || [];
+      ipercHazards = hazardRows || [];
     } else {
       employees = [];
       tasks = [];
       sstRecords = [];
+      ipercMatrices = [];
+      ipercHazards = [];
+      selectedIpercMatrixId = null;
     }
     showApp();
     renderAll();
@@ -498,7 +510,7 @@
 
   function renderModuleCounts() {
     Object.keys(MODULES).forEach(key => {
-      const count = sstRecords.filter(record => record.module_key === key).length;
+      const count = key === 'iperc' ? ipercMatrices.length : sstRecords.filter(record => record.module_key === key).length;
       const badge = $(`[data-module-count="${key}"]`);
       if (badge) badge.textContent = String(count);
     });
@@ -510,7 +522,7 @@
     const keys = ['iperc', 'epp', 'committee', 'incidents', 'inspections', 'emergency'];
     container.innerHTML = keys.map(key => {
       const item = MODULES[key];
-      const count = sstRecords.filter(record => record.module_key === key).length;
+      const count = key === 'iperc' ? ipercMatrices.length : sstRecords.filter(record => record.module_key === key).length;
       return `<button type="button" class="quick-module" data-module="${key}"><span class="quick-module-icon">${({ iperc: '▧', epp: '⬡', committee: '♧', incidents: '!', inspections: '⌕', emergency: '◇' })[key]}</span><span><b>${escapeHtml(item.title)}</b><small>${count} ${count === 1 ? 'registro' : 'registros'}</small></span><span class="quick-module-arrow">→</span></button>`;
     }).join('');
   }
@@ -528,8 +540,12 @@
       : currentModuleKey === 'iperc'
         ? 'Carga segura: la matriz y los adjuntos se guardan en un espacio privado de tu empresa. No incluyas información clínica ni datos personales innecesarios.'
         : 'No registres diagnósticos, resultados médicos ni historias clínicas en notas o documentos.';
+    const isIperc = currentModuleKey === 'iperc';
     privacy.classList.toggle('hidden', !['exam_schedule', 'iperc', 'incidents', 'audit_followup', 'training'].includes(currentModuleKey));
-    $('#toggle-record-form').classList.toggle('hidden', !company);
+    $('#iperc-workbench').classList.toggle('hidden', !isIperc);
+    $('.module-stat-row').classList.toggle('hidden', isIperc);
+    $('#toggle-record-form').classList.toggle('hidden', !company || isIperc);
+    if (isIperc) $('#record-form').classList.add('hidden');
     const fileWrap = $('#record-file-wrap');
     fileWrap.classList.toggle('hidden', !module.upload);
     const fileInput = $('#record-file');
@@ -542,10 +558,18 @@
       ? 'Solo notas administrativas de coordinación. No ingreses resultados médicos ni diagnósticos.'
       : 'Describe el seguimiento. No ingreses datos médicos ni diagnósticos.';
     renderModuleRecords();
+    if (isIperc) renderIpercWorkbench();
   }
 
   function renderModuleRecords() {
     const moduleRecords = sstRecords.filter(record => record.module_key === currentModuleKey);
+    const isIperc = currentModuleKey === 'iperc';
+    if ($('#generic-module-panel')) {
+      $('#generic-module-panel').classList.toggle('hidden', isIperc && moduleRecords.length === 0);
+      $('#generic-record-kicker').textContent = isIperc ? 'REGISTROS IPERC ANTERIORES' : 'REGISTROS DE LA EMPRESA';
+      $('#generic-record-heading').firstChild.textContent = isIperc ? 'Registros IPERC anteriores ' : 'Elementos guardados ';
+      $('#iperc-legacy-note').classList.toggle('hidden', !isIperc || moduleRecords.length === 0);
+    }
     const query = ($('#record-search')?.value || '').trim().toLocaleLowerCase('es');
     const sorted = [...moduleRecords].sort((a, b) => (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31') || String(b.created_at || '').localeCompare(String(a.created_at || '')));
     const visible = sorted.filter(record => [record.title, record.category, record.responsible, record.notes, record.file_name].some(value => String(value || '').toLocaleLowerCase('es').includes(query)));
@@ -577,6 +601,366 @@
         <td><div class="row-actions"><button type="button" class="row-action" data-record-edit="${recordId}" title="Editar" aria-label="Editar ${escapeHtml(record.title)}">✎</button><button type="button" class="row-action danger" data-record-delete="${recordId}" title="Eliminar" aria-label="Eliminar ${escapeHtml(record.title)}">×</button></div></td>
       </tr>`;
     }).join('');
+  }
+
+  function latestIpercVersions() {
+    const latest = new Map();
+    ipercMatrices.forEach(matrix => {
+      const key = matrix.matrix_group_id;
+      const current = latest.get(key);
+      if (!current || Number(matrix.version_number) > Number(current.version_number)) latest.set(key, matrix);
+    });
+    return [...latest.values()];
+  }
+
+  function isLatestIpercVersion(matrix) {
+    if (!matrix) return false;
+    const latest = latestIpercVersions().find(item => item.matrix_group_id === matrix.matrix_group_id);
+    return latest?.id === matrix.id;
+  }
+
+  function newUuid() {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, char => {
+      const random = Math.random() * 16 | 0;
+      return (char === 'x' ? random : (random & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  function ipercReviewState(matrix) {
+    if (!matrix.review_date) return { label: 'Sin fecha de revisión', className: 'no-date', alert: false };
+    if (matrix.review_date < todayISO()) return { label: 'Revisión vencida', className: 'overdue', alert: true };
+    const start = new Date(`${todayISO()}T00:00:00`);
+    const due = new Date(`${matrix.review_date}T00:00:00`);
+    const days = Math.round((due - start) / 86400000);
+    if (days <= 30) return { label: days === 0 ? 'Revisar hoy' : `Revisar en ${days} días`, className: 'soon', alert: true };
+    return { label: `Revisión ${dateLabel(matrix.review_date)}`, className: 'current', alert: false };
+  }
+
+  function renderIpercWorkbench() {
+    if (!$('#iperc-workbench')) return;
+    const latestVersions = latestIpercVersions();
+    const latestIds = new Set(latestVersions.map(matrix => matrix.id));
+    const openHazards = ipercHazards.filter(item => latestIds.has(item.matrix_id) && item.status !== 'done');
+    $('#iperc-matrix-count').textContent = String(ipercMatrices.length);
+    $('#iperc-review-alert-count').textContent = String(latestVersions.filter(matrix => ipercReviewState(matrix).alert).length);
+    $('#iperc-open-hazards-count').textContent = String(openHazards.length);
+    const sorted = [...ipercMatrices].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || Number(b.version_number) - Number(a.version_number));
+    const list = $('#iperc-matrix-list');
+    $('#iperc-matrix-empty').classList.toggle('hidden', sorted.length > 0);
+    list.innerHTML = sorted.map(matrix => {
+      const latest = latestIds.has(matrix.id);
+      const selected = selectedIpercMatrixId === matrix.id;
+      const review = ipercReviewState(matrix);
+      const pathButton = matrix.file_path
+        ? `<button type="button" class="iperc-file-link" data-iperc-download="${escapeHtml(matrix.id)}">↓ ${escapeHtml(matrix.file_name || 'Descargar matriz')}</button>`
+        : '<span class="muted-cell">Sin archivo</span>';
+      const actions = latest
+        ? `<button type="button" class="row-action" data-iperc-edit="${escapeHtml(matrix.id)}" title="Editar versión" aria-label="Editar versión ${matrix.version_number}">✎</button><button type="button" class="iperc-action-link" data-iperc-new-version="${escapeHtml(matrix.id)}">＋ Nueva versión</button><button type="button" class="row-action danger" data-iperc-delete="${escapeHtml(matrix.id)}" title="Eliminar última versión" aria-label="Eliminar versión">×</button>`
+        : '<span class="iperc-readonly-label">Historial · solo lectura</span>';
+      return `<article class="iperc-version-card ${selected ? 'selected' : ''} ${latest ? 'latest' : 'historical'}">
+        <div class="iperc-version-main"><div class="iperc-version-heading"><button type="button" class="iperc-select-title" data-iperc-select="${escapeHtml(matrix.id)}">${escapeHtml(matrix.title)}</button><span class="iperc-version-chip">V${escapeHtml(matrix.version_number)}</span><span class="iperc-current-chip ${latest ? 'is-current' : ''}">${latest ? 'Última versión' : 'Versión anterior'}</span></div><div class="iperc-version-meta"><span>${escapeHtml(matrix.site || 'Sin sede')}</span><span>${escapeHtml(matrix.process || 'Sin proceso')}</span><span>${escapeHtml(matrix.responsible || 'Sin responsable')}</span></div><div class="iperc-version-foot"><span class="iperc-review-pill ${review.className}">${escapeHtml(review.label)}</span>${pathButton}</div></div>
+        <div class="iperc-version-actions">${actions}</div>
+      </article>`;
+    }).join('');
+    if (selectedIpercMatrixId && !ipercMatrices.some(matrix => matrix.id === selectedIpercMatrixId)) selectedIpercMatrixId = null;
+    if (!selectedIpercMatrixId && sorted.length) {
+      const latestSorted = sorted.find(matrix => latestIds.has(matrix.id)) || sorted[0];
+      selectedIpercMatrixId = latestSorted.id;
+    }
+    if (selectedIpercMatrixId && list.innerHTML) {
+      const selectedCard = list.querySelector(`[data-iperc-select="${selectedIpercMatrixId}"]`);
+      list.querySelectorAll('.iperc-version-card').forEach(card => card.classList.remove('selected'));
+      selectedCard?.closest('.iperc-version-card')?.classList.add('selected');
+    }
+    renderIpercRisks();
+  }
+
+  function renderIpercRisks() {
+    const section = $('#iperc-risk-section');
+    const matrix = ipercMatrices.find(item => item.id === selectedIpercMatrixId);
+    if (!matrix) {
+      section.classList.add('hidden');
+      $('#iperc-risk-table-body').innerHTML = '';
+      return;
+    }
+    section.classList.remove('hidden');
+    const latest = isLatestIpercVersion(matrix);
+    const riskRows = ipercHazards.filter(item => item.matrix_id === matrix.id).sort((a, b) => (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31') || String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    $('#iperc-selected-title').textContent = matrix.title;
+    $('#iperc-selected-meta').textContent = `Versión ${matrix.version_number}${latest ? ' · Última versión' : ' · Historial de solo lectura'}${matrix.site ? ` · ${matrix.site}` : ''}${matrix.process ? ` · ${matrix.process}` : ''}${matrix.review_date ? ` · Revisión ${dateLabel(matrix.review_date)}` : ''}`;
+    $('#create-iperc-risk').classList.toggle('hidden', !latest || !company);
+    $('#iperc-scale-note').textContent = latest
+      ? `Escala de esta matriz: ${matrix.methodology_notes || 'No especificada; registra las valoraciones con la metodología aprobada por tu empresa.'} El sistema no calcula ni declara niveles de riesgo.`
+      : 'Esta versión histórica se conserva en modo de solo lectura. Crea una nueva versión para continuar actualizando sus peligros y controles.';
+    const tbody = $('#iperc-risk-table-body');
+    const table = tbody.closest('.table-scroll');
+    $('#iperc-risk-empty').classList.toggle('hidden', riskRows.length > 0);
+    table.classList.toggle('hidden', riskRows.length === 0);
+    $('#iperc-risk-empty b').textContent = latest ? 'Esta versión aún no tiene riesgos estructurados' : 'Esta versión no tiene riesgos guardados';
+    $('#iperc-risk-empty p').textContent = latest ? 'Agrega peligros y controles por puesto. También puedes empezar con una matriz en archivo.' : 'El contenido histórico se mantiene sin cambios.';
+    $('#iperc-empty-risk').classList.toggle('hidden', !latest);
+    tbody.innerHTML = riskRows.map(risk => {
+      const overdue = risk.status !== 'done' && risk.due_date && risk.due_date < todayISO();
+      const ratings = [risk.initial_rating ? `Inicial: ${risk.initial_rating}` : '', risk.residual_rating ? `Residual: ${risk.residual_rating}` : ''].filter(Boolean).join(' · ') || 'Sin valoración';
+      const controls = [risk.existing_controls ? `Existentes: ${risk.existing_controls}` : '', risk.additional_controls ? `Medidas: ${risk.additional_controls}` : ''].filter(Boolean).join(' | ') || 'Sin controles descritos';
+      const actions = latest ? `<div class="row-actions"><button type="button" class="row-action" data-iperc-risk-edit="${escapeHtml(risk.id)}" title="Editar riesgo" aria-label="Editar riesgo">✎</button><button type="button" class="row-action danger" data-iperc-risk-delete="${escapeHtml(risk.id)}" title="Eliminar riesgo" aria-label="Eliminar riesgo">×</button></div>` : '<span class="iperc-readonly-label">Solo lectura</span>';
+      return `<tr><td><b>${escapeHtml(risk.job_position)}</b><small>${escapeHtml(risk.activity || 'Sin actividad')}</small></td><td><b>${escapeHtml(risk.hazard)}</b><small>${escapeHtml(risk.risk_event || risk.consequences || 'Sin detalle')}</small></td><td><span class="iperc-table-notes">${escapeHtml(controls)}</span></td><td>${escapeHtml(ratings)}</td><td>${escapeHtml(risk.responsible || '—')}<small class="${overdue ? 'overdue-text' : ''}">${escapeHtml(dateLabel(risk.due_date))}</small></td><td><span class="module-status ${escapeHtml(risk.status || 'pending')} ${overdue ? 'iperc-overdue-status' : ''}">${escapeHtml(moduleStatusLabel(risk.status))}</span></td><td>${actions}</td></tr>`;
+    }).join('');
+  }
+
+  function resetIpercMatrixForm() {
+    const form = $('#iperc-matrix-form');
+    form.reset();
+    ['id', 'matrix_group_id', 'version_number', 'source_matrix_id'].forEach(name => { form.elements.namedItem(name).value = ''; });
+    form.classList.add('hidden');
+    currentEditingIpercMatrix = null;
+    $('#iperc-matrix-form-title').textContent = 'Nueva matriz IPERC';
+    $('#iperc-matrix-form-hint').textContent = 'Define su alcance y adjunta la versión vigente.';
+    $('#iperc-matrix-file').required = false;
+    $('#iperc-matrix-file-help').textContent = 'El adjunto se conserva como evidencia privada.';
+  }
+
+  function openIpercMatrixForm(matrix = null, source = null) {
+    if (!company) { showToast('Completa primero el perfil de tu empresa.', 'error'); switchView('company'); return; }
+    resetIpercMatrixForm();
+    const form = $('#iperc-matrix-form');
+    currentEditingIpercMatrix = matrix;
+    if (matrix) {
+      form.elements.namedItem('id').value = matrix.id;
+      form.elements.namedItem('matrix_group_id').value = matrix.matrix_group_id;
+      form.elements.namedItem('version_number').value = matrix.version_number;
+      ['title', 'site', 'process', 'responsible', 'review_date', 'methodology_notes', 'notes'].forEach(name => { form.elements.namedItem(name).value = matrix[name] ?? ''; });
+      $('#iperc-matrix-form-title').textContent = `Editar IPERC · V${matrix.version_number}`;
+      $('#iperc-matrix-form-hint').textContent = 'Edita los datos de esta versión. Para conservar el historial, usa “Nueva versión” en vez de sobrescribirla.';
+      $('#iperc-matrix-file-help').textContent = matrix.file_name ? `Adjunto actual: ${matrix.file_name}. Elige otro para reemplazarlo; si no, se conserva.` : 'Esta versión no tiene adjunto; selecciona uno para completar la evidencia.';
+      $('#iperc-matrix-file').required = !matrix.file_path;
+    } else if (source) {
+      const groupVersions = ipercMatrices.filter(item => item.matrix_group_id === source.matrix_group_id);
+      const nextVersion = Math.max(...groupVersions.map(item => Number(item.version_number)), 0) + 1;
+      form.elements.namedItem('matrix_group_id').value = source.matrix_group_id;
+      form.elements.namedItem('version_number').value = nextVersion;
+      form.elements.namedItem('source_matrix_id').value = source.id;
+      ['title', 'site', 'process', 'responsible', 'methodology_notes'].forEach(name => { form.elements.namedItem(name).value = source[name] ?? ''; });
+      form.elements.namedItem('review_date').value = '';
+      form.elements.namedItem('notes').value = source.notes || '';
+      $('#iperc-matrix-form-title').textContent = `Crear versión V${nextVersion}`;
+      $('#iperc-matrix-form-hint').textContent = `Se copiarán los riesgos de V${source.version_number}; la versión anterior quedará conservada.`;
+      $('#iperc-matrix-file').required = true;
+      $('#iperc-matrix-file-help').textContent = 'Adjunta el archivo correspondiente a esta nueva versión.';
+    } else {
+      form.elements.namedItem('matrix_group_id').value = newUuid();
+      form.elements.namedItem('version_number').value = 1;
+      $('#iperc-matrix-file').required = true;
+      $('#iperc-matrix-file-help').textContent = 'Adjunta PDF, Excel o CSV. Máximo 15 MB; almacenamiento privado.';
+    }
+    form.classList.remove('hidden');
+    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    $('#iperc-matrix-title').focus();
+  }
+
+  function validateIpercFile(file) {
+    if (!file) return true;
+    if (file.size > MAX_UPLOAD_SIZE) { showToast('El archivo supera el límite de 15 MB.', 'error'); return false; }
+    if (!['pdf', 'xls', 'xlsx', 'csv'].includes(fileExtension(file.name))) { showToast('Para IPERC adjunta PDF, Excel o CSV.', 'error'); return false; }
+    return true;
+  }
+
+  async function submitIpercMatrix(event) {
+    event.preventDefault();
+    if (!company) { showToast('Completa primero el perfil de tu empresa.', 'error'); return; }
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form).entries());
+    const file = $('#iperc-matrix-file').files[0] || null;
+    const isNew = !values.id;
+    const isNewVersion = isNew && Boolean(values.source_matrix_id);
+    const existing = values.id ? ipercMatrices.find(item => item.id === values.id) : null;
+    if (values.id && (!existing || !isLatestIpercVersion(existing))) { showToast('Solo puedes editar la última versión; crea una nueva para conservar el historial.', 'error'); return; }
+    if (isNewVersion) {
+      const source = ipercMatrices.find(item => item.id === values.source_matrix_id);
+      if (!source || !isLatestIpercVersion(source)) { showToast('La versión de origen ya no es la última. Vuelve a abrir “Nueva versión”.', 'error'); return; }
+    }
+    if (file && !validateIpercFile(file)) return;
+    if (isNew && !file) { showToast('Adjunta el archivo de esta versión IPERC.', 'error'); $('#iperc-matrix-file').focus(); return; }
+    const payload = {
+      company_id: company.id,
+      matrix_group_id: values.matrix_group_id || newUuid(),
+      version_number: Number(values.version_number || 1),
+      source_matrix_id: values.source_matrix_id || existing?.source_matrix_id || null,
+      title: values.title.trim(),
+      site: values.site.trim() || null,
+      process: values.process.trim() || null,
+      responsible: values.responsible.trim() || null,
+      review_date: values.review_date || null,
+      methodology_notes: values.methodology_notes.trim() || null,
+      notes: values.notes.trim() || null
+    };
+    const button = form.querySelector('button[type="submit"]');
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Guardando…';
+    try {
+      let saved;
+      if (values.id) {
+        const rows = await restRequest('iperc_matrices', { method: 'PATCH', query: `id=eq.${encodeURIComponent(values.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`, body: payload, prefer: 'return=representation' });
+        saved = rows?.[0];
+      } else {
+        const rows = await restRequest('iperc_matrices', { method: 'POST', query: 'select=*', body: payload, prefer: 'return=representation' });
+        saved = rows?.[0];
+      }
+      if (!saved?.id) throw new Error('No se pudo guardar la matriz IPERC.');
+      if (isNew) {
+        form.elements.namedItem('id').value = saved.id;
+        values.id = saved.id;
+      }
+      selectedIpercMatrixId = saved.id;
+      if (file) {
+        const filePath = `${company.id}/iperc/${saved.id}/${cleanFileName(file.name)}`;
+        await uploadPrivateFile(filePath, file);
+        const metadata = { file_path: filePath, file_name: file.name, file_size: file.size, mime_type: fileMime(file) };
+        const rows = await restRequest('iperc_matrices', { method: 'PATCH', query: `id=eq.${encodeURIComponent(saved.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`, body: metadata, prefer: 'return=representation' });
+        saved = rows?.[0] || { ...saved, ...metadata };
+        if (existing?.file_path && existing.file_path !== filePath) {
+          try { await removePrivateFile(existing.file_path); } catch { /* Keep the updated reference; old private file can be cleaned later. */ }
+        }
+      }
+      await reloadWorkspaceData();
+      resetIpercMatrixForm();
+      showToast(isNewVersion ? `Versión V${saved.version_number} creada; los riesgos anteriores fueron copiados.` : isNew ? 'Matriz IPERC creada.' : 'Matriz IPERC actualizada.');
+    } catch (error) {
+      showToast(friendlyError(error), 'error');
+      try { await reloadWorkspaceData(); } catch { /* Preserve the input form for correction/retry. */ }
+    } finally {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+
+  function resetIpercRiskForm() {
+    const form = $('#iperc-risk-form');
+    form.reset();
+    form.elements.namedItem('id').value = '';
+    form.elements.namedItem('matrix_id').value = selectedIpercMatrixId || '';
+    form.elements.namedItem('status').value = 'pending';
+    form.classList.add('hidden');
+    currentEditingIpercRisk = null;
+    $('#iperc-risk-form-title').textContent = 'Añadir riesgo';
+  }
+
+  function openIpercRiskForm(risk = null) {
+    const matrix = ipercMatrices.find(item => item.id === selectedIpercMatrixId);
+    if (!matrix || !isLatestIpercVersion(matrix)) { showToast('Selecciona la última versión para editar riesgos.', 'error'); return; }
+    resetIpercRiskForm();
+    const form = $('#iperc-risk-form');
+    form.elements.namedItem('matrix_id').value = matrix.id;
+    currentEditingIpercRisk = risk;
+    if (risk) {
+      form.elements.namedItem('id').value = risk.id;
+      ['job_position','activity','hazard','risk_event','consequences','existing_controls','initial_rating','additional_controls','residual_rating','responsible','due_date','status'].forEach(name => { form.elements.namedItem(name).value = risk[name] ?? ''; });
+      $('#iperc-risk-form-title').textContent = 'Editar peligro y controles';
+    }
+    form.classList.remove('hidden');
+    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    $('#iperc-risk-position').focus();
+  }
+
+  async function submitIpercRisk(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form).entries());
+    const matrix = ipercMatrices.find(item => item.id === values.matrix_id);
+    if (!matrix || !isLatestIpercVersion(matrix)) { showToast('Crea o selecciona la última versión de la matriz para actualizar los riesgos.', 'error'); return; }
+    const payload = {
+      company_id: company.id,
+      matrix_id: matrix.id,
+      job_position: values.job_position.trim(),
+      activity: values.activity.trim() || null,
+      hazard: values.hazard.trim(),
+      risk_event: values.risk_event.trim() || null,
+      consequences: values.consequences.trim() || null,
+      existing_controls: values.existing_controls.trim() || null,
+      initial_rating: values.initial_rating.trim() || null,
+      additional_controls: values.additional_controls.trim() || null,
+      residual_rating: values.residual_rating.trim() || null,
+      responsible: values.responsible.trim() || null,
+      due_date: values.due_date || null,
+      status: values.status || 'pending'
+    };
+    const button = form.querySelector('button[type="submit"]');
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Guardando…';
+    try {
+      if (values.id) {
+        const rows = await restRequest('iperc_hazards', { method: 'PATCH', query: `id=eq.${encodeURIComponent(values.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`, body: payload, prefer: 'return=representation' });
+        if (!rows?.length) throw new Error('No se encontró el riesgo para actualizar.');
+      } else {
+        await restRequest('iperc_hazards', { method: 'POST', query: 'select=*', body: payload, prefer: 'return=representation' });
+      }
+      await reloadWorkspaceData();
+      resetIpercRiskForm();
+      showToast(values.id ? 'Riesgo actualizado.' : 'Riesgo agregado.');
+    } catch (error) { showToast(friendlyError(error), 'error'); }
+    finally { button.disabled = false; button.textContent = oldText; }
+  }
+
+  async function deleteIpercRisk(id) {
+    const risk = ipercHazards.find(item => item.id === id);
+    const matrix = ipercMatrices.find(item => item.id === risk?.matrix_id);
+    if (!risk || !matrix || !isLatestIpercVersion(matrix)) { showToast('Solo puedes modificar riesgos de la última versión.', 'error'); return; }
+    if (!window.confirm(`¿Eliminar el peligro “${risk.hazard}” de esta versión?`)) return;
+    try {
+      await restRequest('iperc_hazards', { method: 'DELETE', query: `id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(company.id)}` });
+      await reloadWorkspaceData();
+      showToast('Peligro eliminado.');
+    } catch (error) { showToast(friendlyError(error), 'error'); }
+  }
+
+  async function deleteIpercMatrix(id) {
+    const matrix = ipercMatrices.find(item => item.id === id);
+    if (!matrix || !isLatestIpercVersion(matrix)) return;
+    if (!window.confirm(`¿Eliminar la última versión V${matrix.version_number} de “${matrix.title}” y sus riesgos? El resto del historial se conserva.`)) return;
+    try {
+      await restRequest('iperc_matrices', { method: 'DELETE', query: `id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(company.id)}` });
+      let fileWarning = false;
+      if (matrix.file_path) { try { await removePrivateFile(matrix.file_path); } catch { fileWarning = true; } }
+      selectedIpercMatrixId = null;
+      await reloadWorkspaceData();
+      showToast(fileWarning ? 'Versión eliminada; no se pudo borrar el archivo privado.' : 'Versión eliminada.');
+    } catch (error) { showToast(friendlyError(error), 'error'); }
+  }
+
+  function exportIpercRisksCsv() {
+    const matrix = ipercMatrices.find(item => item.id === selectedIpercMatrixId);
+    if (!matrix) { showToast('Selecciona una matriz IPERC primero.', 'error'); return; }
+    const headers = ['Matriz','Version','Sede','Proceso','Puesto','Actividad','Peligro','Evento de riesgo','Consecuencias','Controles existentes','Valoracion inicial - escala propia','Medidas adicionales','Valoracion residual - escala propia','Responsable','Fecha de seguimiento','Estado'];
+    const risks = ipercHazards.filter(item => item.matrix_id === matrix.id);
+    const rows = risks.map(item => [matrix.title, matrix.version_number, matrix.site, matrix.process, item.job_position, item.activity, item.hazard, item.risk_event, item.consequences, item.existing_controls, item.initial_rating, item.additional_controls, item.residual_rating, item.responsible, item.due_date, moduleStatusLabel(item.status)]);
+    const csvCell = value => {
+      let text = String(value ?? '').replace(/\r?\n/g, ' ');
+      if (/^[=+\-@]/.test(text)) text = `'${text}`;
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+    const csv = '\ufeff' + [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    const safeTitle = cleanFileName(matrix.title).replace(/\.(pdf|xls|xlsx|csv)$/i, '');
+    anchor.download = `${safeTitle}-v${matrix.version_number}-riesgos.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
+  function editIpercMatrix(id) {
+    const matrix = ipercMatrices.find(item => item.id === id);
+    if (matrix && isLatestIpercVersion(matrix)) openIpercMatrixForm(matrix);
+  }
+
+  function createIpercVersion(id) {
+    const matrix = ipercMatrices.find(item => item.id === id);
+    if (matrix && isLatestIpercVersion(matrix)) openIpercMatrixForm(null, matrix);
   }
 
   function resetRecordForm() {
@@ -788,6 +1172,14 @@
   }
 
   function getResponseItemState(item) {
+    if (item.moduleKey === 'iperc') {
+      const currentMatrices = latestIpercVersions();
+      const currentFile = currentMatrices.find(matrix => matrix.file_path);
+      if (currentFile) return { label: `Matriz V${currentFile.version_number} adjunta`, className: 'ready', record: currentFile, file: currentFile };
+      const legacy = sstRecords.find(record => record.module_key === 'iperc' && record.file_path);
+      if (legacy) return { label: 'Adjunto de un registro IPERC anterior', className: 'ready', record: legacy, file: legacy };
+      return { label: currentMatrices.length ? 'Matriz registrada · falta archivo' : 'Falta matriz IPERC', className: 'pending', record: currentMatrices[0] || null, file: null };
+    }
     let matching = sstRecords.filter(record => record.module_key === item.moduleKey);
     if (item.match) {
       const matcher = new RegExp(item.match, 'i');
@@ -844,12 +1236,41 @@
   function renderEvidenceReport() {
     const container = $('#evidence-report');
     if (!container) return;
-    const byModule = Object.keys(MODULES).map(key => ({ key, title: MODULES[key].title, rows: sstRecords.filter(item => item.module_key === key) })).filter(group => group.rows.length);
-    const complete = sstRecords.filter(item => item.status === 'done').length;
-    const pending = sstRecords.length - complete;
-    const moduleSummary = byModule.length ? byModule.map(group => `<div class="evidence-module-summary"><span><b>${escapeHtml(group.title)}</b><small>${group.rows.length} ${group.rows.length === 1 ? 'registro' : 'registros'}</small></span><span class="evidence-summary-arrow">→</span></div>`).join('') : '<div class="empty-state"><span class="empty-symbol">▤</span><b>Tu carpeta aún está vacía</b><p>Empieza cargando una matriz IPERC o creando un registro en los módulos.</p><button type="button" class="button secondary small-button" data-module="iperc">Abrir IPERC</button></div>';
-    const rows = [...sstRecords].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).map(record => `<tr><td><b>${escapeHtml(record.title)}</b><small>${escapeHtml(MODULES[record.module_key]?.title || record.module_key)}</small></td><td>${escapeHtml(record.responsible || '—')}</td><td><span class="module-status ${escapeHtml(record.status || 'pending')}">${escapeHtml(moduleStatusLabel(record.status))}</span></td><td>${escapeHtml(dateLabel(record.due_date))}</td><td>${record.file_path ? escapeHtml(record.file_name || 'Adjunto privado') : '—'}</td></tr>`).join('');
-    container.innerHTML = `<div class="evidence-report-header"><div><span class="panel-kicker">${escapeHtml(company?.legal_name || 'ESPACIO DE EMPRESA')}</span><h3>Resumen de documentación</h3><p>Generado el ${escapeHtml(new Intl.DateTimeFormat('es-PE', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date()))}</p></div><span class="evidence-mark">N</span></div><div class="evidence-kpis"><div><small>Registros</small><b>${sstRecords.length}</b></div><div><small>Completados</small><b>${complete}</b></div><div><small>En seguimiento</small><b>${pending}</b></div><div><small>Archivos privados</small><b>${sstRecords.filter(item => item.file_path).length}</b></div></div><div class="evidence-layout"><div><h4>Resumen por módulo</h4><div class="evidence-module-list">${moduleSummary}</div></div><div><h4>Contenido registrado</h4>${rows ? `<div class="evidence-table-wrap"><table class="evidence-table"><thead><tr><th>REGISTRO</th><th>RESPONSABLE</th><th>ESTADO</th><th>SEGUIMIENTO</th><th>ADJUNTO</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted-cell">Aún no hay registros para mostrar.</p>'}</div></div><p class="evidence-disclaimer">Resumen operativo de la información ingresada. No constituye certificación ni determina cumplimiento legal. Los adjuntos permanecen privados y no se incluyen en este resumen.</p>`;
+    const currentMatrices = latestIpercVersions();
+    const allCount = sstRecords.length + currentMatrices.length;
+    const fileCount = sstRecords.filter(item => item.file_path).length + currentMatrices.filter(item => item.file_path).length;
+    const complete = sstRecords.filter(item => item.status === 'done').length + currentMatrices.filter(item => item.file_path).length;
+    const pending = Math.max(0, allCount - complete);
+    const byModule = Object.keys(MODULES).map(key => {
+      const rows = key === 'iperc'
+        ? [...sstRecords.filter(item => item.module_key === key), ...currentMatrices]
+        : sstRecords.filter(item => item.module_key === key);
+      return { key, title: MODULES[key].title, rows };
+    }).filter(group => group.rows.length);
+    const moduleSummary = byModule.length ? byModule.map(group => `<div class="evidence-module-summary"><span><b>${escapeHtml(group.title)}</b><small>${group.rows.length} ${group.rows.length === 1 ? 'registro' : 'registros/versiones vigentes'}</small></span><span class="evidence-summary-arrow">→</span></div>`).join('') : '<div class="empty-state"><span class="empty-symbol">▤</span><b>Tu carpeta aún está vacía</b><p>Empieza cargando una matriz IPERC o creando un registro en los módulos.</p><button type="button" class="button secondary small-button" data-module="iperc">Abrir IPERC</button></div>';
+    const legacyAndModuleRows = sstRecords.map(record => ({
+      title: record.title,
+      module: MODULES[record.module_key]?.title || record.module_key,
+      responsible: record.responsible,
+      status: moduleStatusLabel(record.status),
+      due: record.due_date,
+      file: record.file_name,
+      hasFile: Boolean(record.file_path),
+      created: record.created_at || ''
+    }));
+    const matrixRows = currentMatrices.map(matrix => ({
+      title: `${matrix.title} · V${matrix.version_number}`,
+      module: 'IPERC y riesgos',
+      responsible: matrix.responsible,
+      status: matrix.file_path ? 'Matriz cargada' : 'Falta adjunto',
+      due: matrix.review_date,
+      file: matrix.file_name,
+      hasFile: Boolean(matrix.file_path),
+      created: matrix.created_at || ''
+    }));
+    const evidenceRows = [...legacyAndModuleRows, ...matrixRows].sort((a,b) => String(b.created).localeCompare(String(a.created)));
+    const rows = evidenceRows.map(record => `<tr><td><b>${escapeHtml(record.title)}</b><small>${escapeHtml(record.module)}</small></td><td>${escapeHtml(record.responsible || '—')}</td><td>${escapeHtml(record.status)}</td><td>${escapeHtml(dateLabel(record.due))}</td><td>${record.hasFile ? escapeHtml(record.file || 'Adjunto privado') : '—'}</td></tr>`).join('');
+    container.innerHTML = `<div class="evidence-report-header"><div><span class="panel-kicker">${escapeHtml(company?.legal_name || 'ESPACIO DE EMPRESA')}</span><h3>Resumen de documentación</h3><p>Generado el ${escapeHtml(new Intl.DateTimeFormat('es-PE', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date()))}</p></div><span class="evidence-mark">N</span></div><div class="evidence-kpis"><div><small>Registros y matrices</small><b>${allCount}</b></div><div><small>Completados / con archivo</small><b>${complete}</b></div><div><small>En seguimiento</small><b>${pending}</b></div><div><small>Archivos privados</small><b>${fileCount}</b></div></div><div class="evidence-layout"><div><h4>Resumen por módulo</h4><div class="evidence-module-list">${moduleSummary}</div></div><div><h4>Contenido registrado</h4>${rows ? `<div class="evidence-table-wrap"><table class="evidence-table"><thead><tr><th>REGISTRO</th><th>RESPONSABLE</th><th>ESTADO / EVIDENCIA</th><th>SEGUIMIENTO</th><th>ADJUNTO</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted-cell">Aún no hay registros para mostrar.</p>'}</div></div><p class="evidence-disclaimer">Resumen operativo de la información ingresada. No constituye certificación ni determina cumplimiento legal. Los adjuntos permanecen privados y no se incluyen en este resumen.</p>`;
     renderRequestChecklist();
     updateRequestDeadline();
   }
@@ -857,6 +1278,7 @@
   function exportEvidenceCsv() {
     const headers = ['Tipo de fila', 'Modulo', 'Registro', 'Tipo', 'Responsable', 'Seguimiento', 'Estado', 'Prioridad', 'Archivo'];
     const rows = sstRecords.map(record => ['Registro', MODULES[record.module_key]?.title || record.module_key, record.title, record.category, record.responsible, record.due_date, moduleStatusLabel(record.status), priorityLabel(record.priority), record.file_name]);
+    latestIpercVersions().forEach(matrix => rows.push(['Matriz IPERC', 'IPERC y riesgos', `${matrix.title} · V${matrix.version_number}`, [matrix.site, matrix.process].filter(Boolean).join(' / '), matrix.responsible, matrix.review_date, matrix.file_path ? 'Matriz cargada' : 'Falta adjunto', '', matrix.file_name]));
     RESPONSE_ITEMS.forEach(item => {
       const state = getResponseItemState(item);
       rows.push(['Checklist', MODULES[item.moduleKey].title, item.title, '', '', '', state.label, '', state.file?.file_name || '']);
@@ -1010,7 +1432,7 @@
     try { if (session?.access_token) await authRequest('logout', { token: session.access_token }); }
     catch { /* Clear the local session even if the remote session already expired. */ }
     saveSession(null);
-    currentUser = null; company = null; employees = []; tasks = []; sstRecords = [];
+    currentUser = null; company = null; employees = []; tasks = []; sstRecords = []; ipercMatrices = []; ipercHazards = []; selectedIpercMatrixId = null;
     setAuthTab('login');
     showAuth();
   }
@@ -1183,14 +1605,18 @@
   async function reloadWorkspaceData() {
     if (!company) return;
     const companyId = encodeURIComponent(company.id);
-    const [employeeRows, taskRows, recordRows] = await Promise.all([
+    const [employeeRows, taskRows, recordRows, matrixRows, hazardRows] = await Promise.all([
       restRequest('employees', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
       restRequest('tasks', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
-      restRequest('sst_records', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` })
+      restRequest('sst_records', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
+      restRequest('iperc_matrices', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
+      restRequest('iperc_hazards', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` })
     ]);
     employees = employeeRows || [];
     tasks = taskRows || [];
     sstRecords = recordRows || [];
+    ipercMatrices = matrixRows || [];
+    ipercHazards = hazardRows || [];
     renderAll();
   }
 
@@ -1214,6 +1640,8 @@
     $('#employee-form').addEventListener('submit', submitEmployee);
     $('#task-form').addEventListener('submit', submitTask);
     $('#record-form').addEventListener('submit', submitRecord);
+    $('#iperc-matrix-form').addEventListener('submit', submitIpercMatrix);
+    $('#iperc-risk-form').addEventListener('submit', submitIpercRisk);
     $('#logout-button').addEventListener('click', logout);
 
     $$('[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
@@ -1237,6 +1665,39 @@
         const record = sstRecords.find(item => item.id === download.dataset.recordDownload);
         if (record) downloadPrivateFile(record);
       }
+    });
+    $('#create-iperc-matrix').addEventListener('click', () => openIpercMatrixForm());
+    $('#iperc-empty-create').addEventListener('click', () => openIpercMatrixForm());
+    $('#cancel-iperc-matrix').addEventListener('click', resetIpercMatrixForm);
+    $('#cancel-iperc-matrix-text').addEventListener('click', resetIpercMatrixForm);
+    $('#iperc-matrix-list').addEventListener('click', event => {
+      const select = event.target.closest('[data-iperc-select]');
+      const edit = event.target.closest('[data-iperc-edit]');
+      const version = event.target.closest('[data-iperc-new-version]');
+      const remove = event.target.closest('[data-iperc-delete]');
+      const download = event.target.closest('[data-iperc-download]');
+      if (select) { resetIpercRiskForm(); selectedIpercMatrixId = select.dataset.ipercSelect; renderIpercWorkbench(); }
+      if (edit) editIpercMatrix(edit.dataset.ipercEdit);
+      if (version) createIpercVersion(version.dataset.ipercNewVersion);
+      if (remove) deleteIpercMatrix(remove.dataset.ipercDelete);
+      if (download) {
+        const matrix = ipercMatrices.find(item => item.id === download.dataset.ipercDownload);
+        if (matrix) downloadPrivateFile(matrix);
+      }
+    });
+    $('#export-iperc-risks').addEventListener('click', exportIpercRisksCsv);
+    $('#create-iperc-risk').addEventListener('click', () => openIpercRiskForm());
+    $('#iperc-empty-risk').addEventListener('click', () => openIpercRiskForm());
+    $('#cancel-iperc-risk').addEventListener('click', resetIpercRiskForm);
+    $('#cancel-iperc-risk-text').addEventListener('click', resetIpercRiskForm);
+    $('#iperc-risk-table-body').addEventListener('click', event => {
+      const edit = event.target.closest('[data-iperc-risk-edit]');
+      const remove = event.target.closest('[data-iperc-risk-delete]');
+      if (edit) {
+        const risk = ipercHazards.find(item => item.id === edit.dataset.ipercRiskEdit);
+        if (risk) openIpercRiskForm(risk);
+      }
+      if (remove) deleteIpercRisk(remove.dataset.ipercRiskDelete);
     });
     $('#export-evidence').addEventListener('click', exportEvidenceCsv);
     $('#print-evidence').addEventListener('click', () => window.print());

@@ -187,6 +187,59 @@
         <div class="view-intro view-intro-row"><div><span id="module-eyebrow" class="eyebrow">MÓDULO SST</span><h2 id="module-title">IPERC y riesgos</h2><p id="module-description">Ordena registros y evidencia.</p></div><button id="toggle-record-form" type="button" class="button primary">＋ Nuevo registro</button></div>
         <div id="module-privacy-note" class="module-privacy-note hidden"></div>
         <div class="module-stat-row"><div class="module-stat"><small>Registros del módulo</small><b id="module-record-total">0</b></div><div class="module-stat"><small>Pendientes</small><b id="module-record-open">0</b></div><div class="module-stat"><small>Vencidos</small><b id="module-record-overdue">0</b></div><span id="module-action-hint">Adjunta documentos para mantener la evidencia junto al registro.</span></div>
+        <div id="iperc-workbench" class="iperc-workbench hidden">
+          <div class="iperc-summary-grid">
+            <article class="iperc-summary-card"><small>Matrices / versiones</small><b id="iperc-matrix-count">0</b><span>Historial conservado</span></article>
+            <article class="iperc-summary-card"><small>Revisión vencida o próxima</small><b id="iperc-review-alert-count">0</b><span>Próximos 30 días</span></article>
+            <article class="iperc-summary-card"><small>Acciones abiertas</small><b id="iperc-open-hazards-count">0</b><span>Controles por seguir</span></article>
+          </div>
+          <section class="panel iperc-matrices-panel">
+            <div class="panel-heading"><div><span class="panel-kicker">MATRICES Y VERSIONES</span><h3>IPERC por sede y proceso</h3></div><button id="create-iperc-matrix" type="button" class="button primary">＋ Nueva matriz</button></div>
+            <form id="iperc-matrix-form" class="iperc-form hidden">
+              <div class="form-panel-heading"><div><h3 id="iperc-matrix-form-title">Nueva matriz IPERC</h3><p id="iperc-matrix-form-hint">Define su alcance y adjunta la versión vigente.</p></div><button id="cancel-iperc-matrix" type="button" class="icon-button" aria-label="Cerrar formulario">×</button></div>
+              <input type="hidden" name="id"><input type="hidden" name="matrix_group_id"><input type="hidden" name="version_number"><input type="hidden" name="source_matrix_id">
+              <div class="form-grid compact-grid">
+                <div class="field"><label for="iperc-matrix-title">Nombre de la matriz *</label><input id="iperc-matrix-title" name="title" required placeholder="Ej.: IPERC de operaciones"></div>
+                <div class="field"><label for="iperc-matrix-site">Sede / área</label><input id="iperc-matrix-site" name="site" placeholder="Sede o área"></div>
+                <div class="field"><label for="iperc-matrix-process">Proceso</label><input id="iperc-matrix-process" name="process" placeholder="Proceso evaluado"></div>
+                <div class="field"><label for="iperc-matrix-responsible">Responsable de revisión</label><input id="iperc-matrix-responsible" name="responsible" placeholder="Área o responsable"></div>
+                <div class="field"><label for="iperc-matrix-review-date">Próxima revisión</label><input id="iperc-matrix-review-date" name="review_date" type="date"></div>
+                <div class="field full-field"><label for="iperc-matrix-methodology">Escala / metodología de la empresa</label><textarea id="iperc-matrix-methodology" name="methodology_notes" rows="2" placeholder="Describe la escala aprobada por tu empresa; Nexo no impone una matriz numérica."></textarea></div>
+                <div class="field full-field"><label for="iperc-matrix-notes">Notas</label><textarea id="iperc-matrix-notes" name="notes" rows="2" placeholder="Alcance y observaciones administrativas. No ingreses datos médicos."></textarea></div>
+                <div id="iperc-matrix-file-wrap" class="field full-field"><label for="iperc-matrix-file">Archivo de matriz (PDF, Excel o CSV, máx. 15 MB) *</label><input id="iperc-matrix-file" name="file" type="file" accept=".pdf,.xls,.xlsx,.csv"><small id="iperc-matrix-file-help">El adjunto se conserva como evidencia privada.</small></div>
+              </div>
+              <div class="form-actions"><button id="cancel-iperc-matrix-text" type="button" class="button secondary">Cancelar</button><button class="button primary" type="submit">Guardar matriz</button></div>
+            </form>
+            <div id="iperc-matrix-list" class="iperc-version-list"></div>
+            <div id="iperc-matrix-empty" class="empty-state hidden"><span class="empty-symbol">▧</span><b>Aún no hay matrices</b><p>Crea una matriz, carga el archivo y registra los peligros y controles por puesto.</p><button id="iperc-empty-create" type="button" class="button secondary small-button">＋ Crear matriz</button></div>
+          </section>
+          <section id="iperc-risk-section" class="panel iperc-risk-panel hidden">
+            <div class="panel-heading"><div><span class="panel-kicker">PELIGROS, RIESGOS Y CONTROLES</span><h3 id="iperc-selected-title">Selecciona una matriz</h3><p id="iperc-selected-meta" class="iperc-selected-meta"></p></div><div class="iperc-heading-actions"><button id="export-iperc-risks" type="button" class="button secondary">Descargar CSV</button><button id="create-iperc-risk" type="button" class="button primary">＋ Añadir riesgo</button></div></div>
+            <div id="iperc-scale-note" class="iperc-scale-note">Usa la escala y metodología aprobadas por tu empresa. El sistema conserva las valoraciones como texto y no determina cumplimiento legal ni nivel de riesgo por su cuenta.</div>
+            <form id="iperc-risk-form" class="iperc-form hidden">
+              <div class="form-panel-heading"><div><h3 id="iperc-risk-form-title">Añadir riesgo</h3><p>Registra peligro y controles para un puesto y actividad.</p></div><button id="cancel-iperc-risk" type="button" class="icon-button" aria-label="Cerrar formulario">×</button></div>
+              <input type="hidden" name="id"><input type="hidden" name="matrix_id">
+              <div class="form-grid compact-grid">
+                <div class="field"><label for="iperc-risk-position">Puesto de trabajo *</label><input id="iperc-risk-position" name="job_position" required placeholder="Puesto evaluado"></div>
+                <div class="field"><label for="iperc-risk-activity">Actividad / tarea</label><input id="iperc-risk-activity" name="activity" placeholder="Tarea o actividad"></div>
+                <div class="field"><label for="iperc-risk-hazard">Peligro *</label><input id="iperc-risk-hazard" name="hazard" required placeholder="Fuente o situación peligrosa"></div>
+                <div class="field"><label for="iperc-risk-event">Riesgo / evento</label><input id="iperc-risk-event" name="risk_event" placeholder="Evento potencial"></div>
+                <div class="field full-field"><label for="iperc-risk-consequences">Consecuencias posibles</label><textarea id="iperc-risk-consequences" name="consequences" rows="2"></textarea></div>
+                <div class="field full-field"><label for="iperc-risk-existing-controls">Controles existentes</label><textarea id="iperc-risk-existing-controls" name="existing_controls" rows="2"></textarea></div>
+                <div class="field"><label for="iperc-risk-initial-rating">Valoración inicial (escala propia)</label><input id="iperc-risk-initial-rating" name="initial_rating" placeholder="Según metodología de la empresa"></div>
+                <div class="field"><label for="iperc-risk-residual-rating">Valoración residual (escala propia)</label><input id="iperc-risk-residual-rating" name="residual_rating" placeholder="Según metodología de la empresa"></div>
+                <div class="field full-field"><label for="iperc-risk-additional-controls">Controles / medidas adicionales</label><textarea id="iperc-risk-additional-controls" name="additional_controls" rows="2"></textarea></div>
+                <div class="field"><label for="iperc-risk-responsible">Responsable de acción</label><input id="iperc-risk-responsible" name="responsible"></div>
+                <div class="field"><label for="iperc-risk-due-date">Fecha de seguimiento</label><input id="iperc-risk-due-date" name="due_date" type="date"></div>
+                <div class="field"><label for="iperc-risk-status">Estado de acción</label><select id="iperc-risk-status" name="status"><option value="pending">Pendiente</option><option value="in_progress">En curso</option><option value="done">Completada</option></select></div>
+              </div>
+              <div class="form-actions"><button id="cancel-iperc-risk-text" type="button" class="button secondary">Cancelar</button><button class="button primary" type="submit">Guardar riesgo</button></div>
+            </form>
+            <div class="table-scroll iperc-risk-table-wrap"><table class="iperc-risk-table"><thead><tr><th>PUESTO / ACTIVIDAD</th><th>PELIGRO / RIESGO</th><th>CONTROLES</th><th>VALORACIÓN</th><th>RESPONSABLE / FECHA</th><th>ESTADO</th><th class="actions-cell">ACCIONES</th></tr></thead><tbody id="iperc-risk-table-body"></tbody></table></div>
+            <div id="iperc-risk-empty" class="empty-state hidden"><span class="empty-symbol">＋</span><b>Esta versión aún no tiene riesgos estructurados</b><p>Agrega peligros y controles por puesto. También puedes empezar con una matriz en archivo.</p><button id="iperc-empty-risk" type="button" class="button secondary small-button">＋ Añadir riesgo</button></div>
+          </section>
+          <div id="iperc-legacy-note" class="iperc-legacy-note hidden">Hay registros IPERC anteriores en formato general. Se conservan debajo; puedes abrirlos para consultarlos o descargarlos.</div>
+        </div>
         <form id="record-form" class="panel inline-create hidden">
           <div class="form-panel-heading"><div><h3 id="record-form-title">Nuevo registro</h3><p id="record-form-hint">Completa los datos y guarda.</p></div><button type="button" id="cancel-record" class="icon-button" aria-label="Cerrar formulario">×</button></div>
           <input type="hidden" name="id">
@@ -202,7 +255,7 @@
           </div>
           <div class="form-actions"><button type="button" id="cancel-record-text" class="button secondary">Cancelar</button><button class="button primary" type="submit">Guardar registro</button></div>
         </form>
-        <div class="panel table-panel"><div class="panel-heading"><div><span class="panel-kicker">REGISTROS DE LA EMPRESA</span><h3>Elementos guardados <span id="record-count-label" class="count-badge">0</span></h3></div><div class="search-box"><span>⌕</span><input id="record-search" type="search" placeholder="Buscar…" aria-label="Buscar registros"></div></div><div class="table-scroll"><table><thead><tr><th>REGISTRO</th><th>TIPO</th><th>RESPONSABLE</th><th>FECHA</th><th>ESTADO</th><th>ARCHIVO</th><th class="actions-cell">ACCIONES</th></tr></thead><tbody id="record-table-body"></tbody></table></div><div id="record-empty" class="empty-state hidden"><span class="empty-symbol">▤</span><b>Aún no hay registros en este módulo</b><p>Agrega un registro para empezar a organizar la evidencia.</p><button type="button" id="empty-add-record" class="button secondary small-button">＋ Crear registro</button></div></div>
+        <div id="generic-module-panel" class="panel table-panel"><div class="panel-heading"><div><span id="generic-record-kicker" class="panel-kicker">REGISTROS DE LA EMPRESA</span><h3 id="generic-record-heading">Elementos guardados <span id="record-count-label" class="count-badge">0</span></h3></div><div class="search-box"><span>⌕</span><input id="record-search" type="search" placeholder="Buscar…" aria-label="Buscar registros"></div></div><div class="table-scroll"><table><thead><tr><th>REGISTRO</th><th>TIPO</th><th>RESPONSABLE</th><th>FECHA</th><th>ESTADO</th><th>ARCHIVO</th><th class="actions-cell">ACCIONES</th></tr></thead><tbody id="record-table-body"></tbody></table></div><div id="record-empty" class="empty-state hidden"><span class="empty-symbol">▤</span><b>Aún no hay registros en este módulo</b><p>Agrega un registro para empezar a organizar la evidencia.</p><button type="button" id="empty-add-record" class="button secondary small-button">＋ Crear registro</button></div></div>
       </section>
 
       <section id="view-health" class="view-section hidden">
