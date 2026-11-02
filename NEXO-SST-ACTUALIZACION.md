@@ -1,46 +1,58 @@
-# Actualización de Nexo SST — sugerencias y comprobación IPERC
+# Actualización de Nexo SST — módulo IPERC
 
-## Archivos para publicar
+## Alcance
 
-En la raíz del repositorio `NEXO_SST_PLATAFORMA`, reemplaza:
+La implementación se limita a IPERC. No se publicaron cambios en GitHub ni Cloudflare. Los archivos de entrega están preparados para revisión; no despliegues hasta confirmar.
 
-- `app.html`
-- `app.js`
-- `app.css`
-- `README.md` (recomendado para mantener la documentación al día)
+## Cambios funcionales
 
-No reemplaces `config.js`, `index.html` ni `_headers`.
+### Método configurable por empresa
 
-## Qué cambió en IPERC
+- Plantillas disponibles: **P × S configurable**, **A + B + C + D referencial** y **metodología propia**.
+- Se configuran escalas, fórmula cuando corresponda, cuatro bandas y desde qué nivel la empresa marca un riesgo como significativo.
+- Cada versión de matriz conserva un snapshot de fórmula, escalas, bandas, nombres, umbral y notas del método. Cambiar la metodología de la empresa no recalcula versiones anteriores.
+- En la plantilla A+B+C+D, el **número real de expuestos** se guarda por separado. El índice A se deriva así: 1–3 personas → A=1; 4–12 → A=2; más de 12 → A=3. Los índices B, C y D se completan por separado y la plantilla calcula P=A+B+C+D y riesgo=P×S.
+- La plantilla es referencial. Las cuatro bandas de Nexo son configurables y no se presentan como reproducción literal de las categorías oficiales ni como validación legal.
 
-### Sugerencias de riesgos por actividad
+### Registro de peligros y controles
 
-- El formulario de riesgo ahora ofrece un catálogo inicial de 14 sugerencias para construcción y mantenimiento (la opción de rubro que elegiste).
-- Al escribir en Actividad/tarea, se filtran sugerencias de peligros y eventos, incluyendo consecuencias posibles y una idea de control orientativa.
-- “Usar como borrador” carga los campos en el formulario; no guarda el riesgo, no lo agrega automáticamente a la matriz ni decide probabilidad/severidad. Confirma si aplica a la tarea real, ajusta el puesto y edita lo necesario antes de guardar.
-- El catálogo es un punto de partida genérico y no exhaustivo; no reemplaza una visita al lugar ni la revisión con trabajadores y responsable competente de SST. Se puede ampliar con las actividades concretas de la empresa.
+- Datos del riesgo: puesto, actividad, actividad rutinaria/no rutinaria/emergencia, personas expuestas, tipo de peligro, evento, daño potencial y referencia normativa opcional.
+- El campo normativo es solo una **referencia escrita por el usuario**; no se comprueba vigencia, pertinencia ni cumplimiento.
+- La clasificación de riesgo significativo sigue el umbral configurado, con opción de ajuste manual y motivo obligatorio.
+- Se permiten varios controles por riesgo, diferenciando **existentes** y **planificados**, con jerarquía de eliminación, sustitución, ingeniería, administrativos o EPP, responsable, fecha, estado y evidencia.
+- Los factores residuales son una valoración registrada por la persona usuaria. El sistema no asume que una medida planificada ya se implementó ni que un control sea eficaz.
+- Las sugerencias de construcción y mantenimiento se cargan como borradores seleccionables y editables. No agregan riesgos automáticamente. El Excel demostrativo sigue separado: adjuntarlo no importa sus filas.
 
-### “Probar autoevaluación IPERC”
+### Versionado y constancia
 
-- Reemplaza visualmente el panel anterior de autoevaluación de requisitos legales generales.
-- Al pulsar el botón, revisa la versión IPERC seleccionada y calcula un porcentaje de completitud/coherencia básica de los datos registrados. Bandas elegidas: **0–49 Bajo**, **50–79 Medio**, **80–100 Excelente**.
-- Las comprobaciones consideran alcance/revisión de matriz, existencia de riesgos estructurados, puesto y actividad, peligro/evento/consecuencias, controles existentes, valoración inicial y residual, medidas adicionales para riesgos altos/críticos calculables y responsable/fecha de acciones abiertas. Los criterios “no aplica” se excluyen del denominador.
-- Presenta fortalezas, campos o criterios por completar y alertas de revisión. El resultado se borra al modificar el formulario o guardar cambios; vuelve a ejecutar la prueba para evaluar la versión actualizada.
-- El porcentaje no confirma que se hayan identificado todos los peligros en campo, no certifica la eficacia de los controles y no es una evaluación de cumplimiento legal. “Excelente” significa que el registro cubre los criterios de completitud de la app.
-- Las valoraciones históricas en texto siguen conservándose; la prueba no las convierte ni les asigna puntajes.
+- La versión incorpora fecha y responsable de elaboración, motivo de cambio, estado de revisión/aprobación, aprobador, fecha, nota o constancia adjunta y archivo original.
+- Una aprobación exige aprobador, fecha y nota o constancia. Las versiones históricas o aprobadas y sus riesgos/controles quedan protegidos contra edición; para cambiar contenido se crea una nueva versión.
+- Al crear una versión, se copian los datos descriptivos y controles. Los factores numéricos solo se copian si el snapshot completo del método es idéntico; si cambió, quedan vacíos para reingreso humano. El texto histórico se conserva sin conversión automática.
 
-## Supabase
+### Autoevaluación documental
 
-No hay una nueva migración para estas funciones: son cambios de interfaz y lógica local sobre las tablas IPERC existentes. La migración `add_risk_methodology_and_legal_assessment` permanece aplicada como versión `20261102204009`; **no la vuelvas a ejecutar**.
+Se ejecuta bajo demanda y muestra puntaje, criterios, faltantes y alertas de revisión humana. Considera puestos, actividad/expuestos, descripción y clasificación de peligros, valoración inicial, controles, valoración residual, responsables y seguimiento. Bandas: **0–49 Bajo**, **50–79 Medio**, **80–100 Excelente**.
 
-El panel visible de autoevaluación legal se ocultó, pero las tablas de requisitos y evaluaciones creadas antes se conservan en Supabase para no eliminar datos ni historial. No se alteró ni amplió el alcance médico.
+El resultado evalúa completitud/coherencia documental, no sustituye una revisión en campo, no afirma que se hayan identificado todos los peligros, no certifica eficacia de controles y no determina cumplimiento legal. “Excelente” es solo respecto de los criterios de registro de la aplicación.
+
+## Base de datos Supabase
+
+La migración `20261102223559_expand_iperc_controls_versions` fue aplicada al proyecto Nexo SST (`zvktbceizrzhiuyynwas`, región `sa-east-1`). Se verificaron en el esquema las columnas de metodología, versión y riesgos, y la nueva tabla `iperc_controls`. **No la vuelvas a aplicar** a este proyecto. El archivo correspondiente se conserva como `migrations/0006_expand_iperc_controls_versions.sql` para el historial del repositorio.
+
+El panel legal anterior no se reactivó; sus tablas preexistentes no se eliminaron. El módulo médico permanece limitado a programación administrativa de exámenes: no se agregaron resultados clínicos, diagnósticos, historias, adjuntos EMO ni afirmaciones OCR/LEO activas.
 
 ## Verificación y límites
 
-Pasaron las comprobaciones estáticas de JavaScript/HTML/CSS, estructura de controles, cálculo IPERC y catálogo local. No se hizo una prueba E2E con sesión autenticada. Las sugerencias y el porcentaje se generan en el navegador a partir de los datos visibles de la matriz; el resultado de autoevaluación no se guarda como certificación ni como registro legal.
+- `node --check app.js`: pasó.
+- HTML: 288 IDs únicos; sin selectores IPERC directos faltantes en la revisión estática.
+- Preview local en puerto `4173`: HTTP 200.
+- Supabase: historial de migración, columnas, RLS (cuatro políticas por tabla IPERC) y triggers de protección/versionado comprobados por consulta de esquema.
+- No se hizo una prueba E2E con sesión autenticada ni una prueba de guardado de punta a punta en la app.
 
-La agenda médica sigue limitada a coordinación administrativa. No agregar resultados clínicos, diagnósticos, historias ni adjuntos EMO.
+## Archivos
 
-## Publicación
+- `app.html`, `app.js`, `app.css`: implementación del módulo.
+- `migrations/0006_expand_iperc_controls_versions.sql`: migración aplicada en el proyecto conectado.
+- `IPERC_demo_realista_construccion_mantenimiento.xlsx`: demostración separada de la aplicación; contiene datos ficticios.
 
-No se publicó en GitHub ni Cloudflare. Cuando confirmes los cambios, sube los archivos de la app a la raíz del repositorio y confirma el commit en `main`; Pages iniciará el redeploy automático. Conserva `config.js` con la conexión Supabase ya configurada.
+`cloudflare-export/` y el paquete de entrega local contienen una copia de los archivos, pero no se publicó ni se desplegó. Antes de desplegar, revisar el diff y confirmar expresamente.

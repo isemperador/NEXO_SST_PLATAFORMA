@@ -47,6 +47,27 @@
     { id: 'coatings-solvents', activity: 'Aplicación de pintura, adhesivos o solventes', aliases: ['pintura','pintar','solvente','solventes','adhesivo','pegamento','quimico','químico'], hazard: 'Vapores, salpicaduras o contacto con pinturas, adhesivos y solventes', risk_event: 'Inhalación, contacto con piel/ojos o derrame', consequences: 'Irritación u otros efectos según producto y exposición', controls: 'Identificar el producto, revisar etiqueta/hoja de seguridad, ventilación, compatibilidad, almacenamiento y protección aplicable.' },
     { id: 'weather-work', activity: 'Trabajo exterior y exposición al clima', aliases: ['exterior','intemperie','calor','frio','frío','lluvia','viento','sol','radiacion','radiación'], hazard: 'Exposición a calor, frío, lluvia, viento o radiación solar', risk_event: 'Exposición ambiental durante la ejecución de la tarea', consequences: 'Malestar, caída, deshidratación u otros efectos según condiciones', controls: 'Revisar pronóstico y condiciones, pausas, hidratación, protección, superficies y criterios para detener/reprogramar la tarea.' }
   ];
+  const IPERC_METHOD_TYPE_LABELS = {
+    configurable_ps: 'Método configurable P × S',
+    rm050_abcd: 'Plantilla referencial A + B + C + D · R.M. 050-2013-TR',
+    company_custom: 'Metodología personalizada de la empresa'
+  };
+  const RM050_INDEX_GUIDE = {
+    reference: 'R.M. 050-2013-TR, Anexo 3 · plantilla referencial',
+    probability: 'P = A + B + C + D',
+    indexes: {
+      A: ['1–3 personas expuestas', '4–12 personas expuestas', 'Más de 12 personas expuestas'],
+      B: ['Procedimientos satisfactorios y suficientes', 'Procedimientos parciales o insuficientes', 'Sin procedimientos o inadecuados'],
+      C: ['Personal entrenado, conoce el peligro y lo previene', 'Entrenamiento parcial; conoce pero no controla', 'Personal sin entrenamiento'],
+      D: ['Exposición esporádica / al menos anual', 'Exposición eventual / al menos mensual', 'Exposición permanente / diaria']
+    },
+    severity: ['Ligeramente dañino', 'Dañino', 'Extremadamente dañino'],
+    bandsNote: 'Bandas agrupadas/configurables en Nexo; no reproducción literal de las cinco categorías referenciales.'
+  };
+  const ACTIVITY_TYPE_LABELS = { routine: 'Rutinaria', non_routine: 'No rutinaria', emergency: 'Emergencia' };
+  const HAZARD_TYPE_LABELS = { physical: 'Físico', chemical: 'Químico', biological: 'Biológico', ergonomic: 'Ergonómico / disergonómico', psychosocial: 'Psicosocial', mechanical: 'Mecánico', electrical: 'Eléctrico', locative: 'Locativo', natural: 'Natural / ambiental', other: 'Otro' };
+  const CONTROL_HIERARCHY_LABELS = { elimination: 'Eliminación', substitution: 'Sustitución', engineering: 'Ingeniería', administrative: 'Administrativos', ppe: 'EPP' };
+  const APPROVAL_STATUS_LABELS = { draft: 'Borrador', in_review: 'En revisión', approved: 'Aprobada' };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -58,6 +79,7 @@
   let sstRecords = [];
   let ipercMatrices = [];
   let ipercHazards = [];
+  let ipercControls = [];
   let ipercMethodology = null;
   let selectedIpercMatrixId = null;
   let ipercQualityResult = null;
@@ -365,12 +387,13 @@
     company = await ensureCompany(user);
     if (company) {
       const companyId = encodeURIComponent(company.id);
-      const [employeeRows, taskRows, recordRows, matrixRows, hazardRows, methodologyRows] = await Promise.all([
+      const [employeeRows, taskRows, recordRows, matrixRows, hazardRows, controlRows, methodologyRows] = await Promise.all([
         restRequest('employees', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
         restRequest('tasks', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
         restRequest('sst_records', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
         restRequest('iperc_matrices', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
         restRequest('iperc_hazards', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
+        restRequest('iperc_controls', { query: `select=*&company_id=eq.${companyId}&order=created_at.asc` }),
         restRequest('iperc_methodologies', { query: `select=*&company_id=eq.${companyId}&limit=1` })
       ]);
       employees = employeeRows || [];
@@ -378,6 +401,7 @@
       sstRecords = recordRows || [];
       ipercMatrices = matrixRows || [];
       ipercHazards = hazardRows || [];
+      ipercControls = controlRows || [];
       ipercMethodology = methodologyRows?.[0] || null;
     } else {
       employees = [];
@@ -385,6 +409,7 @@
       sstRecords = [];
       ipercMatrices = [];
       ipercHazards = [];
+      ipercControls = [];
       ipercMethodology = null;
       selectedIpercMatrixId = null;
     }
@@ -640,6 +665,10 @@
     return latest?.id === matrix.id;
   }
 
+  function isEditableIpercVersion(matrix) {
+    return isLatestIpercVersion(matrix) && matrix?.approval_status !== 'approved';
+  }
+
   function newUuid() {
     if (window.crypto?.randomUUID) return window.crypto.randomUUID();
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, char => {
@@ -715,8 +744,11 @@
 
   function methodologyFromRow(row) {
     if (!row) return null;
+    let config = row.methodology_config || {};
+    if (typeof config === 'string') { try { config = JSON.parse(config); } catch { config = {}; } }
     return {
       methodology_name: String(row.methodology_name || ''),
+      methodology_type: String(row.methodology_type || 'company_custom'),
       formula: String(row.formula || ''),
       probability_min: Number(row.probability_min),
       probability_max: Number(row.probability_max),
@@ -731,9 +763,16 @@
       level_3_label: String(row.level_3_label || ''),
       level_3_max: Number(row.level_3_max),
       level_4_label: String(row.level_4_label || ''),
+      significant_from_level: Number(row.significant_from_level || 3),
+      methodology_config: config && typeof config === 'object' ? config : {},
       revision: Number(row.revision || 1),
       updated_at: row.updated_at || null
     };
+  }
+
+  function methodologySnapshot(method) {
+    const normalized = methodologyFromRow(method);
+    return normalized ? { ...normalized, updated_at: method.updated_at || null } : null;
   }
 
   function methodologyFromMatrix(matrix) {
@@ -743,11 +782,6 @@
       try { snapshot = JSON.parse(snapshot); } catch { return null; }
     }
     return methodologyFromRow(snapshot);
-  }
-
-  function methodologySnapshot(method) {
-    const normalized = methodologyFromRow(method);
-    return normalized ? { ...normalized, updated_at: method.updated_at || null } : null;
   }
 
   function ipercFormulaRange(method) {
@@ -832,81 +866,93 @@
     const item = IPERC_RISK_SUGGESTIONS.find(suggestion => suggestion.id === suggestionId);
     const form = $('#iperc-risk-form');
     if (!item || !form) return;
-    const fieldsToReplace = ['hazard','risk_event','consequences','additional_controls'];
-    const hasExistingText = fieldsToReplace.some(name => String(form.elements.namedItem(name).value || '').trim());
-    if (hasExistingText && !window.confirm('La sugerencia reemplazará el peligro, evento, consecuencia y medida adicional escritos. ¿Continuar?')) return;
+    const hasControls = $$('.iperc-control-editor-row',form).some(row => String(row.querySelector('[name="description"]')?.value || '').trim());
+    const hasExistingText = ['hazard','risk_event','consequences','existing_controls','additional_controls'].some(name => String(form.elements.namedItem(name)?.value || '').trim());
+    if ((hasControls || hasExistingText) && !window.confirm('La sugerencia reemplazará el peligro, evento, daño y controles escritos. Se cargará como propuesta pendiente; revisa y clasifica la jerarquía antes de guardar. ¿Continuar?')) return;
     form.elements.namedItem('activity').value = form.elements.namedItem('activity').value.trim() || item.activity;
     form.elements.namedItem('hazard').value = item.hazard;
     form.elements.namedItem('risk_event').value = item.risk_event;
     form.elements.namedItem('consequences').value = item.consequences;
-    form.elements.namedItem('additional_controls').value = item.controls;
+    form.elements.namedItem('existing_controls').value = '';
+    form.elements.namedItem('additional_controls').value = '';
+    renderIpercControlEditors([{ control_scope:'planned', hierarchy:'', description:item.controls, status:'pending' }]);
+    $('#iperc-risk-existing-controls').closest('details').open = true;
     renderIpercSuggestions();
     ipercQualityResult = null;
     renderIpercQualityPanel();
-    showToast('Sugerencia cargada como borrador. Verifica si aplica, completa el puesto y ajusta los controles y factores antes de guardar.');
+    showToast('Sugerencia cargada como propuesta editable, no como control aplicado. Completa la clasificación, el tipo de actividad/peligro y los factores antes de guardar.');
     updateIpercCalculationPreview();
   }
 
-  function ipercHasFactorPair(risk, stage) {
-    const probability = risk?.[`${stage}_probability`];
-    const severity = risk?.[`${stage}_severity`];
-    return probability !== null && probability !== undefined && probability !== '' && severity !== null && severity !== undefined && severity !== '' && Number.isInteger(Number(probability)) && Number.isInteger(Number(severity));
+  function ipercControlRowsForHazard(hazardId) {
+    return ipercControls.filter(control => control.hazard_id === hazardId);
+  }
+
+  function ipercRiskSignificance(risk, matrix) {
+    if (risk?.significant_risk_override === true || risk?.significant_risk_override === 'true') return { value: true, source: 'Anulación manual', reason: risk.significance_override_reason || '' };
+    if (risk?.significant_risk_override === false || risk?.significant_risk_override === 'false') return { value: false, source: 'Anulación manual', reason: risk.significance_override_reason || '' };
+    const method = methodologyFromMatrix(matrix);
+    const evaluation = ipercRiskEvaluation(risk, matrix, 'initial');
+    if (!method || !evaluation || evaluation.error) return { value: null, source: 'Pendiente de evaluación', reason: '' };
+    return { value: evaluation.index >= Math.max(0, Number(method.significant_from_level || 3) - 1), source: `Umbral de metodología · nivel ${method.significant_from_level || 3}`, reason: '' };
   }
 
   function ipercHasRecordedRating(risk, stage, matrix) {
-    if (ipercHasFactorPair(risk, stage)) {
-      const evaluation = ipercRiskEvaluation(risk, matrix, stage);
-      if (evaluation && !evaluation.error) return true;
-    }
-    return Boolean(String(risk?.[`${stage}_rating`] || '').trim());
+    const evaluation = ipercRiskEvaluation(risk, matrix, stage);
+    return Boolean(evaluation && !evaluation.error);
   }
 
   function evaluateIpercCompleteness(matrix, risks) {
     const items = Array.isArray(risks) ? risks : [];
     const criteria = [];
-    const addCriterion = (key, label, weight, ratio, detail, improvement = '', neutral = false) => {
-      const normalizedRatio = Math.max(0, Math.min(1, Number(ratio) || 0));
-      criteria.push({ key, label, weight, ratio: normalizedRatio, points: neutral ? 0 : Math.round(weight * normalizedRatio * 10) / 10, detail, improvement, neutral });
-    };
     const hasText = value => Boolean(String(value ?? '').trim());
     const ratio = (count, total) => total ? count / total : 0;
-    const matrixFields = ['site','process','responsible','review_date'];
-    const matrixFieldsComplete = matrixFields.filter(field => hasText(matrix?.[field])).length;
-    addCriterion('scope', 'Alcance y revisión de la matriz', 10, matrixFieldsComplete / matrixFields.length, `${matrixFieldsComplete}/${matrixFields.length} datos: sede, proceso, responsable y próxima revisión.`, 'Completa los datos que faltan en la ficha de la matriz.');
-    addCriterion('risks', 'Riesgos estructurados en esta versión', 10, items.length ? 1 : 0, items.length ? `${items.length} riesgo(s) registrado(s) como filas estructuradas.` : 'No hay riesgos estructurados. Adjuntar un Excel no importa sus filas automáticamente.', 'Agrega los peligros y riesgos aplicables como registros por puesto y actividad.');
-    const taskComplete = items.filter(risk => hasText(risk.job_position) && hasText(risk.activity)).length;
-    addCriterion('task', 'Puesto y actividad identificados', 15, ratio(taskComplete, items.length), items.length ? `${taskComplete}/${items.length} riesgos tienen puesto y actividad.` : 'Se revisa al agregar riesgos.', 'Completa el puesto y la tarea/actividad en cada registro.');
-    const chainFields = items.reduce((sum, risk) => sum + ['hazard','risk_event','consequences'].filter(field => hasText(risk[field])).length, 0);
-    const chainTotal = items.length * 3;
-    addCriterion('risk-description', 'Peligro, evento y consecuencias descritos', 15, ratio(chainFields, chainTotal), items.length ? `${chainFields}/${chainTotal} campos registrados en la secuencia peligro–evento–consecuencia.` : 'Se revisa al agregar riesgos.', 'Completa la secuencia: fuente peligrosa, evento posible y consecuencia.');
-    const existingControls = items.filter(risk => hasText(risk.existing_controls)).length;
-    addCriterion('existing-controls', 'Controles existentes documentados', 10, ratio(existingControls, items.length), items.length ? `${existingControls}/${items.length} riesgos describen controles existentes.` : 'Se revisa al agregar riesgos.', 'Describe qué controles ya existen; no marques como existente una medida que aún no se implementó.');
+    const addCriterion = (key, label, weight, count, total, detail, improvement, neutral = false) => {
+      const normalizedRatio = Math.max(0, Math.min(1, Number(ratio(count, total)) || 0));
+      criteria.push({ key, label, weight, ratio: normalizedRatio, points: neutral ? 0 : Math.round(weight * normalizedRatio * 10) / 10, detail, improvement, neutral, count, total });
+    };
+    const totalRisks = items.length || 1;
+    const positions = items.filter(risk => hasText(risk.job_position)).length;
+    addCriterion('positions', 'Puestos registrados', 10, positions, totalRisks, `${positions}/${items.length} riesgos tienen un puesto de trabajo.`, 'Completa el puesto evaluado en cada fila.');
+    const activities = items.filter(risk => hasText(risk.activity) && hasText(risk.activity_type) && risk.exposed_count !== null && risk.exposed_count !== undefined && risk.exposed_count !== '' && Number.isInteger(Number(risk.exposed_count)) && Number(risk.exposed_count) >= 0).length;
+    addCriterion('activities', 'Actividades identificadas y expuestos', 10, activities, totalRisks, `${activities}/${items.length} riesgos tienen actividad, tipo y número de personas expuestas.`, 'Completa la actividad, su tipo y la cantidad potencial de personas expuestas.');
+    const hazardsComplete = items.filter(risk => hasText(risk.hazard) && hasText(risk.hazard_type) && hasText(risk.risk_event) && hasText(risk.consequences)).length;
+    addCriterion('hazards', 'Peligros y daños potenciales documentados', 15, hazardsComplete, totalRisks, `${hazardsComplete}/${items.length} riesgos tienen fuente, tipo de peligro, evento y daño potencial.`, 'Registra la fuente, clasifica el tipo y completa el evento y el daño potencial.');
     const initialRated = items.filter(risk => ipercHasRecordedRating(risk, 'initial', matrix)).length;
-    const initialMethod = Boolean(methodologyFromMatrix(matrix));
-    addCriterion('initial-rating', 'Valoración inicial registrada', 15, ratio(initialRated, items.length), items.length ? `${initialRated}/${items.length} riesgos tienen factores calculables o una valoración histórica en texto.` : 'Se revisa al agregar riesgos.', initialMethod ? 'Completa probabilidad y severidad iniciales dentro de la escala de esta versión.' : 'Configura una metodología y crea una versión nueva para usar puntajes; las valoraciones históricas en texto se conservan y no se convierten.');
-    const highRisks = items.filter(risk => {
-      const evaluation = ipercRiskEvaluation(risk, matrix, 'initial');
-      if (evaluation && !evaluation.error) return evaluation.index >= 2;
-      return /alto|crit|high/i.test(normalizeIpercSearch(risk.initial_rating || ''));
-    });
-    const highWithControls = highRisks.filter(risk => hasText(risk.additional_controls)).length;
-    addCriterion('high-controls', 'Medidas adicionales para riesgos altos/críticos', 10, highRisks.length ? ratio(highWithControls, highRisks.length) : 1, highRisks.length ? `${highWithControls}/${highRisks.length} niveles altos/críticos tienen medidas adicionales descritas.` : 'No se identificaron niveles altos/críticos con las valoraciones registradas; si faltan factores, esta comprobación no permite descartarlos.', 'Describe medidas adicionales para los riesgos altos/críticos y verifica su implementación.', !highRisks.length);
+    addCriterion('risk-evaluation', 'Riesgos evaluados', 15, initialRated, totalRisks, `${initialRated}/${items.length} riesgos tienen un cálculo inicial válido según el método fijado en esta versión. Los textos históricos no se recalculan.`, 'Completa los factores requeridos por la metodología snapshot de esta versión.');
+    const controlsByRisk = items.map(risk => ({ risk, controls: ipercControlRowsForHazard(risk.id) }));
+    const withControls = controlsByRisk.filter(({ risk, controls }) => controls.length > 0 || hasText(risk.existing_controls) || hasText(risk.additional_controls)).length;
+    addCriterion('controls', 'Controles registrados', 15, withControls, totalRisks, `${withControls}/${items.length} riesgos tienen controles estructurados o texto histórico conservado.`, 'Agrega controles clasificados por jerarquía y distingue lo existente de lo planificado.');
     const residualRated = items.filter(risk => ipercHasRecordedRating(risk, 'residual', matrix)).length;
-    addCriterion('residual-rating', 'Valoración residual registrada', 10, ratio(residualRated, items.length), items.length ? `${residualRated}/${items.length} riesgos tienen factores residuales calculables o una valoración histórica en texto.` : 'Se revisa al agregar riesgos.', 'Completa la valoración residual después de considerar las medidas; el texto histórico no se transforma.');
-    const openActions = items.filter(risk => hasText(risk.additional_controls) && risk.status !== 'done');
-    const trackedActions = openActions.filter(risk => hasText(risk.responsible) && hasText(risk.due_date)).length;
-    addCriterion('action-followup', 'Responsable y fecha para acciones abiertas', 5, openActions.length ? ratio(trackedActions, openActions.length) : 1, openActions.length ? `${trackedActions}/${openActions.length} acciones abiertas tienen responsable y fecha.` : 'No hay acciones adicionales abiertas que requieran seguimiento.', 'Asigna responsable y fecha de seguimiento a cada acción pendiente/en curso.', !openActions.length);
+    addCriterion('residual', 'Valoración residual registrada', 15, residualRated, totalRisks, `${residualRated}/${items.length} riesgos tienen factores residuales registrados y un puntaje calculable con el método de su versión; esto no verifica implementación ni eficacia de controles.`, 'Completa la valoración residual según el escenario que evalúes; verifica por separado la implementación y eficacia de las medidas. El sistema no reinterpreta notas históricas.');
+    let followupActions = ipercControls.filter(control => control.control_scope === 'planned' && ['pending','in_progress'].includes(control.status));
+    if (!followupActions.length) followupActions = items.filter(risk => hasText(risk.additional_controls) && risk.status !== 'done').map(risk => ({ responsible: risk.responsible, due_date: risk.due_date, status: risk.status, legacy: true }));
+    const responsibleComplete = followupActions.filter(control => hasText(control.responsible)).length;
+    addCriterion('responsibles', 'Responsables asignados', 10, responsibleComplete, followupActions.length, followupActions.length ? `${responsibleComplete}/${followupActions.length} acciones abiertas tienen responsable.` : 'No hay medidas planificadas abiertas que requieran asignación.', 'Asigna una persona o cargo responsable a cada acción abierta.', !followupActions.length);
+    const allControls = ipercControls.filter(control => items.some(risk => risk.id === control.hazard_id));
+    const followupComplete = allControls.filter(control => {
+      if (!control.status) return false;
+      if (control.control_scope === 'existing') return ['implemented','verified'].includes(control.status) && hasText(control.evidence_path);
+      if (['pending','in_progress'].includes(control.status)) return hasText(control.due_date);
+      return ['implemented','verified'].includes(control.status) && hasText(control.evidence_path);
+    }).length;
+    const structuredRiskIds = new Set(allControls.map(control => control.hazard_id));
+    const legacyOpen = items.filter(risk => !structuredRiskIds.has(risk.id) && hasText(risk.additional_controls) && risk.status !== 'done');
+    const followupTotal = allControls.length + legacyOpen.length;
+    const followupCount = followupComplete + legacyOpen.filter(risk => hasText(risk.responsible) && hasText(risk.due_date)).length;
+    addCriterion('followup', 'Seguimiento de controles', 10, followupCount, followupTotal, followupTotal ? `${followupCount}/${followupTotal} controles tienen estado y seguimiento; medidas cerradas requieren evidencia.` : 'No hay controles estructurados o acciones abiertas que requieran seguimiento.', 'Completa estado y fecha de las medidas abiertas; adjunta evidencia al implementar/verificar controles.', !followupTotal);
     const applicableCriteria = criteria.filter(item => !item.neutral);
     const applicableWeight = applicableCriteria.reduce((sum, item) => sum + item.weight, 0);
     const earnedPoints = applicableCriteria.reduce((sum, item) => sum + item.points, 0);
     const score = applicableWeight ? Math.max(0, Math.min(100, Math.round(earnedPoints / applicableWeight * 100))) : 0;
     const level = score < 50 ? { label: 'Bajo', className: 'low' } : score < 80 ? { label: 'Medio', className: 'medium' } : { label: 'Excelente', className: 'excellent' };
     const reviewFlags = [];
-    if (!initialMethod && items.some(risk => ipercHasFactorPair(risk, 'initial') || ipercHasFactorPair(risk, 'residual'))) reviewFlags.push('Hay factores numéricos, pero esta versión no guarda una metodología; el puntaje no puede interpretarse con una fórmula snapshot.');
+    if (!methodologyFromMatrix(matrix) && items.some(risk => hasText(risk.initial_rating) || hasText(risk.residual_rating))) reviewFlags.push('Hay valoraciones históricas en texto; se conservan, pero no se convierten ni se puntúan como cálculo actual.');
     items.forEach(risk => {
       const initial = ipercRiskEvaluation(risk, matrix, 'initial');
       const residual = ipercRiskEvaluation(risk, matrix, 'residual');
       if (initial && residual && !initial.error && !residual.error && residual.score > initial.score) reviewFlags.push(`Revisa “${risk.hazard || risk.activity || 'riesgo sin título'}”: el puntaje residual supera al inicial según la fórmula guardada.`);
+      if ((risk.significant_risk_override === true || risk.significant_risk_override === false) && !hasText(risk.significance_override_reason)) reviewFlags.push(`Registra el motivo de la clasificación manual de riesgo significativo para “${risk.hazard || risk.activity || 'riesgo sin título'}”.`);
     });
     return { score, ...level, criteria, reviewFlags, riskCount: items.length, thresholds: '0–49 Bajo · 50–79 Medio · 80–100 Excelente' };
   }
@@ -954,7 +1000,7 @@
     const applicableCount = assessment.criteria.filter(item => !item.neutral).length;
     $('#iperc-quality-score-caption').textContent = `Completitud de ${assessment.riskCount} riesgo(s) · ${applicableCount} criterios aplicables · ${assessment.thresholds}. No es un puntaje de cumplimiento legal.`;
     const completed = assessment.criteria.filter(item => item.ratio >= 1 && !item.neutral);
-    const incomplete = assessment.criteria.filter(item => item.ratio < 1);
+    const incomplete = assessment.criteria.filter(item => item.ratio < 1 && !item.neutral);
     $('#iperc-quality-strengths').innerHTML = completed.length
       ? completed.map(item => `<li><b>${escapeHtml(item.label)}</b><span>${escapeHtml(item.detail)}</span></li>`).join('')
       : '<li><span>Aún no hay criterios completos en esta versión.</span></li>';
@@ -983,9 +1029,11 @@
   function ipercMethodologyPreview() {
     const form = $('#iperc-methodology-form');
     const values = Object.fromEntries(new FormData(form).entries());
+    const type = values.methodology_type || 'company_custom';
     const method = {
       methodology_name: values.methodology_name,
-      formula: values.formula,
+      methodology_type: type,
+      formula: String(values.formula || '').trim(),
       probability_min: Number(values.probability_min), probability_max: Number(values.probability_max),
       severity_min: Number(values.severity_min), severity_max: Number(values.severity_max),
       level_1_label: values.level_1_label, level_1_max: Number(values.level_1_max),
@@ -994,18 +1042,25 @@
       level_4_label: values.level_4_label
     };
     if (!method.formula || values.probability_min === '' || values.probability_max === '' || values.severity_min === '' || values.severity_max === '' || values.level_1_max === '' || values.level_2_max === '' || values.level_3_max === '') {
-      $('#iperc-methodology-preview').textContent = 'Completa las escalas, la fórmula y los tres umbrales para validar el método.';
+      $('#iperc-methodology-preview').textContent = 'Completa escalas, fórmula y tres umbrales para validar el método.';
       $('#iperc-methodology-preview').classList.remove('invalid');
       return false;
     }
     try {
+      if (type === 'rm050_abcd' && (method.probability_min !== 4 || method.probability_max !== 12 || method.severity_min !== 1 || method.severity_max !== 3 || method.formula.replace(/\s/g,'').toUpperCase() !== 'P*S')) {
+        throw new Error('La plantilla A+B+C+D usa índices A–D de 1 a 3, P=A+B+C+D y riesgo=P×S. Elige la metodología personalizada para cambiar la fórmula.');
+      }
+      if (type === 'configurable_ps' && method.formula.replace(/\s/g,'').toUpperCase() !== 'P*S') throw new Error('El método configurable P×S usa la fórmula P × S. Elige la metodología personalizada para otra fórmula.');
       const range = ipercFormulaRange(method);
       const cutoffs = [method.level_1_max, method.level_2_max, method.level_3_max];
       const validLabels = [method.level_1_label, method.level_2_label, method.level_3_label, method.level_4_label].every(label => String(label || '').trim());
       const validCutoffs = cutoffs.every(Number.isFinite) && cutoffs.every(value => Math.abs(value * 100 - Math.round(value * 100)) < 1e-8) && cutoffs[0] >= range.min && cutoffs[0] < cutoffs[1] && cutoffs[1] < cutoffs[2] && cutoffs[2] < range.max;
+      const significanceLevel = Number(values.significant_from_level);
       if (!validLabels) throw new Error('Asigna un nombre a cada nivel.');
-      if (!validCutoffs) throw new Error(`Los umbrales deben aumentar (máximo 2 decimales), comenzar desde el mínimo ${formatIpercScore(range.min)} y dejar el nivel superior por debajo del máximo ${formatIpercScore(range.max)}.`);
-      $('#iperc-methodology-preview').innerHTML = `<b>Método válido:</b> resultado entre ${escapeHtml(formatIpercScore(range.min))} y ${escapeHtml(formatIpercScore(range.max))}. Bandas: ${escapeHtml(method.level_1_label)} ≤ ${escapeHtml(formatIpercScore(cutoffs[0]) )}; ${escapeHtml(method.level_2_label)} ≤ ${escapeHtml(formatIpercScore(cutoffs[1]))}; ${escapeHtml(method.level_3_label)} ≤ ${escapeHtml(formatIpercScore(cutoffs[2]))}; ${escapeHtml(method.level_4_label)} por encima.`;
+      if (!validCutoffs) throw new Error(`Los umbrales deben aumentar (máximo 2 decimales), comenzar desde ${formatIpercScore(range.min)} y dejar el nivel superior por debajo de ${formatIpercScore(range.max)}.`);
+      if (!Number.isInteger(significanceLevel) || significanceLevel < 1 || significanceLevel > 4) throw new Error('Selecciona desde qué nivel la empresa considera significativo el riesgo.');
+      const note = type === 'rm050_abcd' ? ' Plantilla referencial A+B+C+D agrupada en cuatro bandas configurables.' : '';
+      $('#iperc-methodology-preview').innerHTML = `<b>Método válido:</b> resultado entre ${escapeHtml(formatIpercScore(range.min))} y ${escapeHtml(formatIpercScore(range.max))}. Bandas: ${escapeHtml(method.level_1_label)} ≤ ${escapeHtml(formatIpercScore(cutoffs[0]))}; ${escapeHtml(method.level_2_label)} ≤ ${escapeHtml(formatIpercScore(cutoffs[1]))}; ${escapeHtml(method.level_3_label)} ≤ ${escapeHtml(formatIpercScore(cutoffs[2]))}; ${escapeHtml(method.level_4_label)} por encima. Significativo desde nivel ${significanceLevel}.${escapeHtml(note)}`;
       $('#iperc-methodology-preview').classList.remove('invalid');
       return true;
     } catch (error) {
@@ -1015,22 +1070,66 @@
     }
   }
 
+  function applyIpercMethodTemplate(type, preserveCurrent = false) {
+    const form = $('#iperc-methodology-form');
+    const methodType = ['configurable_ps','rm050_abcd','company_custom'].includes(type) ? type : 'company_custom';
+    const fields = name => form.elements.namedItem(name);
+    fields('methodology_type').value = methodType;
+    const templates = {
+      configurable_ps: {
+        methodology_name: 'Método configurable P × S', probability_min: 1, probability_max: 5,
+        probability_scale_notes: 'Escala definida y documentada por la empresa.', severity_min: 1, severity_max: 5,
+        severity_scale_notes: 'Escala definida y documentada por la empresa.', formula: 'P * S',
+        level_1_label: 'Bajo', level_1_max: 4, level_2_label: 'Moderado', level_2_max: 9,
+        level_3_label: 'Alto', level_3_max: 16, level_4_label: 'Crítico', significant_from_level: 3
+      },
+      rm050_abcd: {
+        methodology_name: 'Plantilla referencial A + B + C + D · R.M. 050-2013-TR', probability_min: 4, probability_max: 12,
+        probability_scale_notes: 'P = A+B+C+D; cada índice A, B, C y D toma valores de 1 a 3.', severity_min: 1, severity_max: 3,
+        severity_scale_notes: '1 ligeramente dañino; 2 dañino; 3 extremadamente dañino.', formula: 'P * S',
+        level_1_label: 'Bajo', level_1_max: 8,
+        level_2_label: 'Moderado', level_2_max: 16,
+        level_3_label: 'Alto', level_3_max: 24,
+        level_4_label: 'Crítico', significant_from_level: 3
+      },
+      company_custom: {
+        methodology_name: 'Metodología personalizada de la empresa', probability_min: 1, probability_max: 5,
+        probability_scale_notes: 'Define los criterios de probabilidad de la empresa.', severity_min: 1, severity_max: 5,
+        severity_scale_notes: 'Define los criterios de severidad de la empresa.', formula: 'P * S',
+        level_1_label: 'Bajo', level_1_max: 4, level_2_label: 'Moderado', level_2_max: 9,
+        level_3_label: 'Alto', level_3_max: 16, level_4_label: 'Crítico', significant_from_level: 3
+      }
+    };
+    const template = templates[methodType];
+    Object.entries(template).forEach(([name,value]) => {
+      if (!preserveCurrent || !fields(name).value) fields(name).value = String(value);
+    });
+    const isReference = methodType === 'rm050_abcd';
+    const typeIsFixedFormula = methodType !== 'company_custom';
+    ['probability_min','probability_max','severity_min','severity_max'].forEach(name => { fields(name).readOnly = isReference; });
+    fields('formula').readOnly = typeIsFixedFormula;
+    $('#iperc-rm050-guide').classList.toggle('hidden', !isReference);
+    ipercMethodologyPreview();
+  }
+
   function renderIpercMethodology() {
     const method = methodologyFromRow(ipercMethodology);
     const summary = $('#iperc-methodology-summary');
     const status = $('#iperc-methodology-status');
     const button = $('#configure-iperc-methodology');
     if (!method) {
-      status.textContent = 'Sin configurar: los niveles no se calculan hasta que la empresa defina su fórmula y umbrales.';
+      status.textContent = 'Sin configurar: fija una plantilla y las bandas antes de calcular niveles.';
       button.textContent = '＋ Configurar método';
-      summary.innerHTML = '<span class="iperc-methodology-unset">Aún no hay una escala activa para esta empresa. Las valoraciones de texto y los registros históricos siguen intactos.</span>';
+      summary.innerHTML = '<span class="iperc-methodology-unset">Aún no hay una metodología activa. Elige P×S, A+B+C+D referencial o una metodología propia; las valoraciones históricas permanecen intactas.</span>';
       return;
     }
     try {
       const range = ipercFormulaRange(method);
-      status.textContent = `Configurada · revisión ${method.revision} · los cambios se aplican a versiones nuevas.`;
+      const methodLabel = IPERC_METHOD_TYPE_LABELS[method.methodology_type] || IPERC_METHOD_TYPE_LABELS.company_custom;
+      status.textContent = `Configurada · revisión ${method.revision} · se fija en nuevas versiones.`;
       button.textContent = 'Editar metodología';
-      summary.innerHTML = `<b>${escapeHtml(method.methodology_name)}</b><span>Fórmula: <code>${escapeHtml(method.formula)}</code></span><span>Probabilidad ${method.probability_min}–${method.probability_max}${method.probability_scale_notes ? ` · ${escapeHtml(method.probability_scale_notes)}` : ''}</span><span>Severidad ${method.severity_min}–${method.severity_max}${method.severity_scale_notes ? ` · ${escapeHtml(method.severity_scale_notes)}` : ''}</span><span>Rango posible ${escapeHtml(formatIpercScore(range.min))}–${escapeHtml(formatIpercScore(range.max))} · ${escapeHtml(method.level_1_label)} / ${escapeHtml(method.level_2_label)} / ${escapeHtml(method.level_3_label)} / ${escapeHtml(method.level_4_label)}</span>`;
+      const referenceNote = method.methodology_type === 'rm050_abcd' ? `<span class="iperc-methodology-reference">Referencial; A+B+C+D. Cuatro bandas agrupadas/configurables, no certificación ni reproducción literal de la tabla.</span>` : '';
+      summary.innerHTML = `<b>${escapeHtml(method.methodology_name)}</b><span>${escapeHtml(methodLabel)}</span><span>Fórmula: <code>${escapeHtml(method.methodology_type === 'rm050_abcd' ? '(A+B+C+D) × S' : method.formula)}</code></span><span>P ${method.probability_min}–${method.probability_max}${method.probability_scale_notes ? ` · ${escapeHtml(method.probability_scale_notes)}` : ''}</span><span>S ${method.severity_min}–${method.severity_max}${method.severity_scale_notes ? ` · ${escapeHtml(method.severity_scale_notes)}` : ''}</span><span>Rango ${escapeHtml(formatIpercScore(range.min))}–${escapeHtml(formatIpercScore(range.max))} · ${escapeHtml(method.level_1_label)} / ${escapeHtml(method.level_2_label)} / ${escapeHtml(method.level_3_label)} / ${escapeHtml(method.level_4_label)}</span><span>Riesgo significativo desde nivel ${method.significant_from_level}.</span>${referenceNote}`;
     } catch (error) {
       status.textContent = 'La metodología guardada necesita revisión.';
       button.textContent = 'Revisar método';
@@ -1041,11 +1140,17 @@
   function openIpercMethodologyForm() {
     const form = $('#iperc-methodology-form');
     form.reset();
-    const method = ipercMethodology;
-    const defaults = method || {};
-    ['methodology_name','probability_min','probability_max','probability_scale_notes','severity_min','severity_max','severity_scale_notes','formula','level_1_label','level_1_max','level_2_label','level_2_max','level_3_label','level_3_max','level_4_label'].forEach(name => {
-      form.elements.namedItem(name).value = defaults[name] ?? '';
-    });
+    const method = methodologyFromRow(ipercMethodology);
+    if (method) {
+      ['methodology_name','probability_min','probability_max','probability_scale_notes','severity_min','severity_max','severity_scale_notes','formula','level_1_label','level_1_max','level_2_label','level_2_max','level_3_label','level_3_max','level_4_label','significant_from_level'].forEach(name => {
+        const input = form.elements.namedItem(name);
+        if (input) input.value = method[name] ?? '';
+      });
+      applyIpercMethodTemplate(method.methodology_type, true);
+      form.elements.namedItem('significant_from_level').value = String(method.significant_from_level || 3);
+    } else {
+      applyIpercMethodTemplate('configurable_ps');
+    }
     $('#iperc-methodology-form-title').textContent = method ? `Editar metodología · revisión ${method.revision}` : 'Configurar metodología IPERC';
     $('#iperc-methodology-preview').classList.remove('invalid');
     form.classList.remove('hidden');
@@ -1053,20 +1158,11 @@
   }
 
   function loadIpercMethodologyExample() {
+    applyIpercMethodTemplate('configurable_ps');
     const form = $('#iperc-methodology-form');
-    const example = {
-      methodology_name: 'Ejemplo editable 1–5',
-      probability_min: 1, probability_max: 5,
-      probability_scale_notes: 'Ejemplo ilustrativo; definir/validar con la empresa',
-      severity_min: 1, severity_max: 5,
-      severity_scale_notes: 'Ejemplo ilustrativo; definir/validar con la empresa',
-      formula: 'P * S',
-      level_1_label: 'Bajo', level_1_max: 4,
-      level_2_label: 'Moderado', level_2_max: 9,
-      level_3_label: 'Alto', level_3_max: 16,
-      level_4_label: 'Crítico'
-    };
-    Object.entries(example).forEach(([name,value]) => { form.elements.namedItem(name).value = String(value); });
+    form.elements.namedItem('methodology_name').value = 'Ejemplo editable 1–5';
+    form.elements.namedItem('probability_scale_notes').value = 'Ejemplo ilustrativo; definir y validar con la empresa.';
+    form.elements.namedItem('severity_scale_notes').value = 'Ejemplo ilustrativo; definir y validar con la empresa.';
     ipercMethodologyPreview();
   }
 
@@ -1075,16 +1171,22 @@
     form.reset();
     form.classList.add('hidden');
     $('#iperc-methodology-preview').classList.remove('invalid');
+    $('#iperc-rm050-guide').classList.add('hidden');
   }
 
   async function submitIpercMethodology(event) {
     event.preventDefault();
     if (!company) { showToast('Completa primero el perfil de tu empresa.', 'error'); return; }
-    if (!ipercMethodologyPreview()) { showToast('Revisa la fórmula y las bandas antes de guardar.', 'error'); return; }
+    if (!ipercMethodologyPreview()) { showToast('Revisa la plantilla, fórmula y bandas antes de guardar.', 'error'); return; }
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const methodType = values.methodology_type || 'company_custom';
+    const config = methodType === 'rm050_abcd'
+      ? { ...RM050_INDEX_GUIDE, four_band_adaptation: true }
+      : { source: 'Configuración definida por la empresa' };
     const payload = {
       company_id: company.id,
       methodology_name: values.methodology_name.trim(),
+      methodology_type: methodType,
       formula: values.formula.trim().toUpperCase(),
       probability_min: Number(values.probability_min), probability_max: Number(values.probability_max),
       severity_min: Number(values.severity_min), severity_max: Number(values.severity_max),
@@ -1094,6 +1196,8 @@
       level_2_label: values.level_2_label.trim(), level_2_max: Number(values.level_2_max),
       level_3_label: values.level_3_label.trim(), level_3_max: Number(values.level_3_max),
       level_4_label: values.level_4_label.trim(),
+      significant_from_level: Number(values.significant_from_level),
+      methodology_config: config,
       revision: Number(ipercMethodology?.revision || 0) + 1
     };
     const button = event.currentTarget.querySelector('button[type="submit"]');
@@ -1111,7 +1215,7 @@
       ipercQualityResult = null;
       await reloadWorkspaceData();
       resetIpercMethodologyForm();
-      showToast('Metodología guardada. Las versiones existentes no se recalcularon; crea una versión nueva para aplicar cambios.');
+      showToast('Metodología guardada. El método se aplica a versiones nuevas; el historial no se recalcula.');
     } catch (error) { showToast(friendlyError(error), 'error'); }
     finally { button.disabled = false; button.textContent = oldText; }
   }
@@ -1122,24 +1226,37 @@
     const latestVersions = latestIpercVersions();
     const latestIds = new Set(latestVersions.map(matrix => matrix.id));
     const openHazards = ipercHazards.filter(item => latestIds.has(item.matrix_id) && item.status !== 'done');
+    const openControlActions = ipercControls.filter(control => {
+      const hazard = ipercHazards.find(item => item.id === control.hazard_id);
+      return hazard && latestIds.has(hazard.matrix_id) && control.control_scope === 'planned' && ['pending','in_progress'].includes(control.status);
+    });
+    const risksWithOpenControl = new Set(openControlActions.map(control => control.hazard_id));
+    const openLegacyRisks = openHazards.filter(risk => !risksWithOpenControl.has(risk.id));
     $('#iperc-matrix-count').textContent = String(ipercMatrices.length);
     $('#iperc-review-alert-count').textContent = String(latestVersions.filter(matrix => ipercReviewState(matrix).alert).length);
-    $('#iperc-open-hazards-count').textContent = String(openHazards.length);
+    $('#iperc-open-hazards-count').textContent = String(openLegacyRisks.length + openControlActions.length);
     const sorted = [...ipercMatrices].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || Number(b.version_number) - Number(a.version_number));
     const list = $('#iperc-matrix-list');
     $('#iperc-matrix-empty').classList.toggle('hidden', sorted.length > 0);
     list.innerHTML = sorted.map(matrix => {
       const latest = latestIds.has(matrix.id);
+      const editable = isEditableIpercVersion(matrix);
       const selected = selectedIpercMatrixId === matrix.id;
       const review = ipercReviewState(matrix);
+      const approval = matrix.approval_status || 'draft';
       const pathButton = matrix.file_path
-        ? `<button type="button" class="iperc-file-link" data-iperc-download="${escapeHtml(matrix.id)}">↓ ${escapeHtml(matrix.file_name || 'Descargar matriz')}</button>`
-        : '<span class="muted-cell">Sin archivo</span>';
+        ? `<button type="button" class="iperc-file-link" data-iperc-download="${escapeHtml(matrix.id)}">↓ Original: ${escapeHtml(matrix.file_name || 'archivo de matriz')}</button>`
+        : '<span class="muted-cell">Sin archivo original</span>';
+      const approvalEvidence = matrix.approval_file_path
+        ? `<button type="button" class="iperc-file-link" data-iperc-approval-download="${escapeHtml(matrix.id)}">↓ Constancia: ${escapeHtml(matrix.approval_file_name || 'archivo')}</button>`
+        : '';
       const actions = latest
-        ? `<button type="button" class="row-action" data-iperc-edit="${escapeHtml(matrix.id)}" title="Editar versión" aria-label="Editar versión ${matrix.version_number}">✎</button><button type="button" class="iperc-action-link" data-iperc-new-version="${escapeHtml(matrix.id)}">＋ Nueva versión</button><button type="button" class="row-action danger" data-iperc-delete="${escapeHtml(matrix.id)}" title="Eliminar última versión" aria-label="Eliminar versión">×</button>`
+        ? `${editable ? `<button type="button" class="row-action" data-iperc-edit="${escapeHtml(matrix.id)}" title="Editar borrador" aria-label="Editar versión ${matrix.version_number}">✎</button>` : '<span class="iperc-readonly-label">Aprobada · solo lectura</span>'}<button type="button" class="iperc-action-link" data-iperc-new-version="${escapeHtml(matrix.id)}">＋ Nueva versión</button>${editable && approval === 'draft' ? `<button type="button" class="row-action danger" data-iperc-delete="${escapeHtml(matrix.id)}" title="Eliminar borrador" aria-label="Eliminar borrador">×</button>` : ''}`
         : '<span class="iperc-readonly-label">Historial · solo lectura</span>';
       return `<article class="iperc-version-card ${selected ? 'selected' : ''} ${latest ? 'latest' : 'historical'}">
-        <div class="iperc-version-main"><div class="iperc-version-heading"><button type="button" class="iperc-select-title" data-iperc-select="${escapeHtml(matrix.id)}">${escapeHtml(matrix.title)}</button><span class="iperc-version-chip">V${escapeHtml(matrix.version_number)}</span><span class="iperc-current-chip ${latest ? 'is-current' : ''}">${latest ? 'Última versión' : 'Versión anterior'}</span></div><div class="iperc-version-meta"><span>${escapeHtml(matrix.site || 'Sin sede')}</span><span>${escapeHtml(matrix.process || 'Sin proceso')}</span><span>${escapeHtml(matrix.responsible || 'Sin responsable')}</span></div><div class="iperc-version-foot"><span class="iperc-review-pill ${review.className}">${escapeHtml(review.label)}</span>${pathButton}</div></div>
+        <div class="iperc-version-main"><div class="iperc-version-heading"><button type="button" class="iperc-select-title" data-iperc-select="${escapeHtml(matrix.id)}">${escapeHtml(matrix.title)}</button><span class="iperc-version-chip">V${escapeHtml(matrix.version_number)}</span><span class="iperc-current-chip ${latest ? 'is-current' : ''}">${latest ? 'Última versión' : 'Versión anterior'}</span><span class="iperc-approval-chip approval-${escapeHtml(approval)}">${escapeHtml(APPROVAL_STATUS_LABELS[approval] || 'Borrador')}</span></div>
+        <div class="iperc-version-meta"><span>${escapeHtml(matrix.site || 'Sin sede')}</span><span>${escapeHtml(matrix.process || 'Sin proceso')}</span><span>Elaboró: ${escapeHtml(matrix.prepared_by || '—')}</span><span>Revisó: ${escapeHtml(matrix.responsible || '—')}</span><span>Fecha elaboración: ${escapeHtml(dateLabel(matrix.prepared_on || (matrix.created_at || '').slice(0,10)))}</span><span>Actualizada: ${escapeHtml(dateLabel((matrix.updated_at || '').slice(0,10)))}</span>${approval === 'approved' ? `<span>Aprobó: ${escapeHtml(matrix.approved_by || '—')} · ${escapeHtml(dateLabel((matrix.approved_at || '').slice(0,10)))}</span>` : ''}${matrix.change_reason ? `<span class="iperc-version-reason">Motivo: ${escapeHtml(matrix.change_reason)}</span>` : ''}</div>
+        <div class="iperc-version-foot"><span class="iperc-review-pill ${review.className}">${escapeHtml(review.label)}</span>${pathButton}${approvalEvidence}</div></div>
         <div class="iperc-version-actions">${actions}</div>
       </article>`;
     }).join('');
@@ -1157,31 +1274,67 @@
     renderIpercQualityPanel();
   }
 
+  function deriveIpercIndexA(exposedCount) {
+    const count = Number(exposedCount);
+    if (!Number.isInteger(count) || count < 1) return null;
+    if (count <= 3) return 1;
+    if (count <= 12) return 2;
+    return 3;
+  }
+
+  function syncIpercExposedIndexA() {
+    const count = $('#iperc-risk-exposed-count')?.value;
+    const index = deriveIpercIndexA(count);
+    ['initial_index_a','residual_index_a'].forEach(name => {
+      const select = $('#iperc-risk-form').elements.namedItem(name);
+      if (select) select.value = index ? String(index) : '';
+    });
+  }
+
   function configureIpercRiskScoringFields(matrix) {
     const method = methodologyFromMatrix(matrix);
-    const fieldset = $('#iperc-risk-score-fields');
+    const generic = $('#iperc-risk-score-fields');
+    const abcd = $('#iperc-risk-abcd-fields');
     const unavailable = $('#iperc-risk-score-unavailable');
-    fieldset.classList.toggle('hidden', !method);
+    const isAbcd = method?.methodology_type === 'rm050_abcd';
+    const exposedCountInput = $('#iperc-risk-exposed-count');
+    exposedCountInput.required = isAbcd;
+    exposedCountInput.min = isAbcd ? '1' : '0';
+    $('#iperc-exposed-count-help').textContent = isAbcd ? 'Obligatorio para este método: el índice A se deriva de 1–3, 4–12 o más de 12 personas.' : 'Dato de contexto; no se usa automáticamente en P×S.';
+    ['initial_index_a','residual_index_a'].forEach(name => { const input=$('#iperc-risk-form').elements.namedItem(name); input.disabled=isAbcd; });
+    generic.classList.toggle('hidden', !method || isAbcd);
+    abcd.classList.toggle('hidden', !isAbcd);
     unavailable.classList.toggle('hidden', Boolean(method));
+    const form = $('#iperc-risk-form');
+    $$('[data-risk-factor]', form).forEach(input => { input.required = false; input.removeAttribute('min'); input.removeAttribute('max'); });
+    $$('[data-risk-index]', form).forEach(input => { input.required = false; });
     if (!method) {
-      ['initial_probability','initial_severity','residual_probability','residual_severity'].forEach(name => {
-        const input = $('#iperc-risk-form').elements.namedItem(name);
-        input.required = false;
-        input.removeAttribute('min');
-        input.removeAttribute('max');
-      });
       unavailable.textContent = ipercMethodology
-        ? 'Esta versión no tiene una metodología guardada. Configura el método y crea una nueva versión de la matriz para aplicarlo; las valoraciones de texto anteriores no se convierten.'
-        : 'Para calcular niveles, configura la metodología de la empresa y crea una nueva versión de esta matriz. Las valoraciones históricas en texto se conservan y no se convierten automáticamente.';
+        ? 'Esta versión no tiene metodología fijada. Crea una nueva versión para aplicar un método; las notas históricas no se convierten.'
+        : 'Elige una plantilla y crea una nueva versión. Las valoraciones históricas en texto se conservan sin conversión.';
+      updateIpercCalculationPreview();
       return;
     }
-    $('#iperc-risk-score-fields legend').textContent = `Cálculo automático · ${method.methodology_name} · ${method.formula}`;
-    [['initial_probability',method.probability_min,method.probability_max],['residual_probability',method.probability_min,method.probability_max],['initial_severity',method.severity_min,method.severity_max],['residual_severity',method.severity_min,method.severity_max]].forEach(([name,min,max]) => {
-      const input = $('#iperc-risk-form').elements.namedItem(name);
-      input.min = String(min);
-      input.max = String(max);
-      input.required = true;
-    });
+    unavailable.classList.add('hidden');
+    if (isAbcd) {
+      $('#iperc-risk-abcd-fields legend').textContent = `Índices A+B+C+D · ${method.methodology_name} · P=A+B+C+D; riesgo=P×S`;
+      $$('[data-risk-index]', form).forEach(input => { input.required = true; });
+      ['initial_severity_abcd','residual_severity_abcd'].forEach(name => {
+        const input = form.elements.namedItem(name);
+        input.required = true;
+      });
+      ['initial_probability','initial_severity','residual_probability','residual_severity'].forEach(name => {
+        const input = form.elements.namedItem(name);
+        input.required = false; input.removeAttribute('min'); input.removeAttribute('max');
+      });
+      syncIpercExposedIndexA();
+    } else {
+      $('#iperc-risk-score-fields legend').textContent = `Cálculo automático · ${method.methodology_name} · ${method.formula}`;
+      [['initial_probability',method.probability_min,method.probability_max],['residual_probability',method.probability_min,method.probability_max],['initial_severity',method.severity_min,method.severity_max],['residual_severity',method.severity_min,method.severity_max]].forEach(([name,min,max]) => {
+        const input = form.elements.namedItem(name);
+        input.min = String(min); input.max = String(max); input.required = true;
+      });
+    }
     updateIpercCalculationPreview();
   }
 
@@ -1191,26 +1344,73 @@
     const preview = $('#iperc-calculation-preview');
     if (!method || !preview) return;
     const form = $('#iperc-risk-form');
-    const read = name => form.elements.namedItem(name).value;
-    const calc = (prefix, stage) => {
-      const p = read(`${prefix}_probability`);
-      const s = read(`${prefix}_severity`);
-      if (p === '' || s === '') return `${stage}: completa probabilidad y severidad`;
-      const value = ipercRiskEvaluation({ [`${prefix}_probability`]: p, [`${prefix}_severity`]: s }, matrix, prefix);
-      if (!value) return `${stage}: pendiente`;
-      if (value.error) return `${stage}: ${value.error}`;
-      return `${stage}: ${formatIpercScore(value.score)} · ${value.label}`;
+    const read = name => form.elements.namedItem(name)?.value ?? '';
+    const calc = stage => {
+      let probability, severity;
+      if (method.methodology_type === 'rm050_abcd') {
+        const values = ['a','b','c','d'].map(index => read(`${stage}_index_${index}`));
+        severity = read(stage === 'initial' ? 'initial_severity_abcd' : 'residual_severity_abcd');
+        const sumLabel = stage === 'initial' ? '#iperc-initial-abcd-sum' : '#iperc-residual-abcd-sum';
+        if (values.some(value => value === '') || severity === '') {
+          $(sumLabel).textContent = `P ${stage === 'initial' ? 'inicial' : 'residual'} = A + B + C + D (completa los cuatro índices)`;
+          return `${stage === 'initial' ? 'Inicial' : 'Residual'}: completa A, B, C, D y severidad`;
+        }
+        probability = values.reduce((sum,value) => sum + Number(value),0);
+        $(sumLabel).textContent = `P ${stage === 'initial' ? 'inicial' : 'residual'} = ${values.map(Number).join(' + ')} = ${probability}`;
+      } else {
+        probability = read(`${stage}_probability`);
+        severity = read(`${stage}_severity`);
+        if (probability === '' || severity === '') return `${stage === 'initial' ? 'Inicial' : 'Residual'}: completa probabilidad y severidad`;
+        probability = Number(probability);
+      }
+      const severityNumber = Number(severity);
+      const risk = stage === 'initial' ? { initial_probability: probability, initial_severity: severityNumber } : { residual_probability: probability, residual_severity: severityNumber };
+      const value = ipercRiskEvaluation(risk, matrix, stage);
+      if (!value) return `${stage === 'initial' ? 'Inicial' : 'Residual'}: pendiente`;
+      if (value.error) return `${stage === 'initial' ? 'Inicial' : 'Residual'}: ${value.error}`;
+      return `${stage === 'initial' ? 'Inicial' : 'Residual'}: ${formatIpercScore(value.score)} · ${value.label}`;
     };
-    const initial = calc('initial','Inicial');
-    const residual = calc('residual','Residual');
-    preview.textContent = `${initial}  |  ${residual}`;
+    preview.textContent = `${calc('initial')}  |  ${calc('residual')}`;
   }
 
   function ipercEvaluationMarkup(label, evaluation, legacyText) {
     if (evaluation?.error) return `<span class="iperc-risk-evaluation"><small>${escapeHtml(label)}</small><b class="iperc-risk-invalid">${escapeHtml(evaluation.error)}</b></span>`;
     if (evaluation) return `<span class="iperc-risk-evaluation"><small>${escapeHtml(label)} · ${escapeHtml(formatIpercScore(evaluation.score))}</small><b class="iperc-risk-level level-${evaluation.index}">${escapeHtml(evaluation.label)}</b></span>`;
-    if (legacyText) return `<span class="iperc-risk-evaluation"><small>${escapeHtml(label)} · texto conservado</small><b>${escapeHtml(legacyText)}</b></span>`;
-    return `<span class="iperc-risk-evaluation"><small>${escapeHtml(label)}</small><b class="muted-cell">Sin factores</b></span>`;
+    if (legacyText) return `<span class="iperc-risk-evaluation"><small>${escapeHtml(label)} · texto histórico</small><b>${escapeHtml(legacyText)}</b></span>`;
+    return `<span class="iperc-risk-evaluation"><small>${escapeHtml(label)}</small><b class="muted-cell">Sin factores calculados</b></span>`;
+  }
+
+  function renderIpercControlEditors(controls = []) {
+    const list = $('#iperc-control-editor-list');
+    if (!list) return;
+    list.innerHTML = '';
+    controls.forEach(control => addIpercControlEditorRow(control));
+  }
+
+  function addIpercControlEditorRow(control = {}) {
+    const template = $('#iperc-control-template');
+    const list = $('#iperc-control-editor-list');
+    if (!template || !list) return null;
+    const fragment = template.content.cloneNode(true);
+    const row = fragment.querySelector('.iperc-control-editor-row');
+    const set = (name,value) => { const input=row.querySelector(`[name="${name}"]`); if (input) input.value=value ?? ''; };
+    set('control_id',control.id || '');
+    set('control_scope',control.control_scope || 'planned');
+    set('hierarchy',control.hierarchy || '');
+    set('description',control.description || '');
+    set('responsible',control.responsible || '');
+    set('due_date',control.due_date || '');
+    set('status',control.status || (control.control_scope === 'existing' ? 'verified' : 'pending'));
+    set('evidence_path',control.evidence_path || '');
+    set('evidence_name',control.evidence_name || '');
+    set('evidence_size',control.evidence_size || '');
+    set('evidence_mime_type',control.evidence_mime_type || '');
+    const evidence = row.querySelector('[data-control-current-evidence]');
+    if (control.evidence_path) evidence.innerHTML = `<button type="button" class="iperc-file-link" data-iperc-control-download="${escapeHtml(control.id)}">↓ ${escapeHtml(control.evidence_name || 'Descargar evidencia')}</button>`;
+    else evidence.textContent = 'Sin evidencia adjunta.';
+    row.querySelector('[data-control-remove]').addEventListener('click', () => row.remove());
+    list.appendChild(fragment);
+    return list.lastElementChild;
   }
 
   function renderIpercRisks() {
@@ -1222,34 +1422,48 @@
       return;
     }
     section.classList.remove('hidden');
-    const latest = isLatestIpercVersion(matrix);
+    const editable = isEditableIpercVersion(matrix);
     const method = methodologyFromMatrix(matrix);
     const riskRows = ipercHazards.filter(item => item.matrix_id === matrix.id).sort((a, b) => (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31') || String(b.created_at || '').localeCompare(String(a.created_at || '')));
     $('#iperc-selected-title').textContent = matrix.title;
-    $('#iperc-selected-meta').textContent = `Versión ${matrix.version_number}${latest ? ' · Última versión' : ' · Historial de solo lectura'}${matrix.site ? ` · ${matrix.site}` : ''}${matrix.process ? ` · ${matrix.process}` : ''}${matrix.review_date ? ` · Revisión ${dateLabel(matrix.review_date)}` : ''}`;
-    $('#create-iperc-risk').classList.toggle('hidden', !latest || !company);
+    $('#iperc-selected-meta').textContent = `Versión ${matrix.version_number} · ${APPROVAL_STATUS_LABELS[matrix.approval_status || 'draft'] || 'Borrador'}${editable ? '' : ' · Solo lectura'}${matrix.site ? ` · ${matrix.site}` : ''}${matrix.process ? ` · ${matrix.process}` : ''}${matrix.review_date ? ` · Próxima revisión ${dateLabel(matrix.review_date)}` : ''}`;
+    $('#create-iperc-risk').classList.toggle('hidden', !editable || !company);
     configureIpercRiskScoringFields(matrix);
     $('#iperc-scale-note').textContent = method
-      ? `Nivel inicial y residual calculados con “${method.methodology_name}” (fórmula ${method.formula}) y las bandas configuradas por tu empresa. El cálculo no valida por sí mismo que el método sea adecuado.`
-      : ipercMethodology
-        ? 'La empresa ya tiene un método configurado. Esta versión no lo contiene: crea una nueva versión para fijarlo sin alterar el historial.'
-        : 'Configura la fórmula, las escalas y los umbrales de tu empresa. Los valores históricos en texto se conservan y no se convierten automáticamente.';
+      ? method.methodology_type === 'rm050_abcd'
+        ? `Plantilla referencial A+B+C+D fijada en esta versión: P=A+B+C+D y riesgo=P×S. Las cuatro bandas son la adaptación configurable de la empresa en Nexo; no representan equivalencia automática ni validación legal.`
+        : `Cálculo con “${method.methodology_name}” (${method.formula}) y bandas guardadas en esta versión. El resultado no valida la adecuación del método.`
+      : 'Esta versión conserva notas históricas en texto. Fija una metodología en una nueva versión para calcular sin alterar los valores anteriores.';
     const tbody = $('#iperc-risk-table-body');
     const table = tbody.closest('.table-scroll');
     $('#iperc-risk-empty').classList.toggle('hidden', riskRows.length > 0);
     table.classList.toggle('hidden', riskRows.length === 0);
-    $('#iperc-risk-empty b').textContent = latest ? 'Esta versión aún no tiene riesgos estructurados' : 'Esta versión no tiene riesgos guardados';
-    $('#iperc-risk-empty p').textContent = latest ? 'Agrega peligros y controles por puesto. También puedes empezar con una matriz en archivo.' : 'El contenido histórico se mantiene sin cambios.';
-    $('#iperc-empty-risk').classList.toggle('hidden', !latest);
+    $('#iperc-risk-empty b').textContent = editable ? 'Esta versión aún no tiene riesgos estructurados' : 'Esta versión no tiene riesgos guardados';
+    $('#iperc-risk-empty p').textContent = editable ? 'Agrega peligros y controles por puesto. El archivo adjunto se conserva como evidencia; sus filas no se importan automáticamente.' : 'El contenido histórico aprobado se mantiene sin cambios.';
+    $('#iperc-empty-risk').classList.toggle('hidden', !editable);
     tbody.innerHTML = riskRows.map(risk => {
       const overdue = risk.status !== 'done' && risk.due_date && risk.due_date < todayISO();
       const initialEval = ipercRiskEvaluation(risk, matrix, 'initial');
       const residualEval = ipercRiskEvaluation(risk, matrix, 'residual');
       const ratings = `${ipercEvaluationMarkup('Inicial', initialEval, risk.initial_rating)}${ipercEvaluationMarkup('Residual', residualEval, risk.residual_rating)}`;
-      const controls = [risk.existing_controls ? `Existentes: ${risk.existing_controls}` : '', risk.additional_controls ? `Medidas: ${risk.additional_controls}` : ''].filter(Boolean).join(' | ') || 'Sin controles descritos';
-      const actions = latest ? `<div class="row-actions"><button type="button" class="row-action" data-iperc-risk-edit="${escapeHtml(risk.id)}" title="Editar riesgo" aria-label="Editar riesgo">✎</button><button type="button" class="row-action danger" data-iperc-risk-delete="${escapeHtml(risk.id)}" title="Eliminar riesgo" aria-label="Eliminar riesgo">×</button></div>` : '<span class="iperc-readonly-label">Solo lectura</span>';
-      return `<tr><td><b>${escapeHtml(risk.job_position)}</b><small>${escapeHtml(risk.activity || 'Sin actividad')}</small></td><td><b>${escapeHtml(risk.hazard)}</b><small>${escapeHtml(risk.risk_event || risk.consequences || 'Sin detalle')}</small></td><td><span class="iperc-table-notes">${escapeHtml(controls)}</span></td><td class="iperc-rating-cell">${ratings}</td><td>${escapeHtml(risk.responsible || '—')}<small class="${overdue ? 'overdue-text' : ''}">${escapeHtml(dateLabel(risk.due_date))}</small></td><td><span class="module-status ${escapeHtml(risk.status || 'pending')} ${overdue ? 'iperc-overdue-status' : ''}">${escapeHtml(moduleStatusLabel(risk.status))}</span></td><td>${actions}</td></tr>`;
+      const structuredControls = ipercControlRowsForHazard(risk.id);
+      const controlDetails = structuredControls.map(control => `<span class="iperc-control-summary"><b>${escapeHtml(control.control_scope === 'existing' ? 'Existente' : 'Planificado')} · ${escapeHtml(CONTROL_HIERARCHY_LABELS[control.hierarchy] || control.hierarchy)}</b><small>${escapeHtml(control.description)} · ${escapeHtml(control.status === 'verified' ? 'Verificado' : control.status === 'implemented' ? 'Implementado' : control.status === 'in_progress' ? 'En curso' : 'Pendiente')}${control.responsible ? ` · ${escapeHtml(control.responsible)}` : ''}${control.due_date ? ` · ${escapeHtml(dateLabel(control.due_date))}` : ''}${control.evidence_path ? ' · Evidencia adjunta' : ''}</small></span>`).join('');
+      const legacyControls = [risk.existing_controls ? `Existentes (texto histórico): ${risk.existing_controls}` : '', risk.additional_controls ? `Medidas (texto histórico): ${risk.additional_controls}` : ''].filter(Boolean).map(text => `<span class="iperc-control-summary legacy"><small>${escapeHtml(text)}</small></span>`).join('');
+      const controls = controlDetails || legacyControls || '<span class="muted-cell">Sin controles registrados</span>';
+      const significance = ipercRiskSignificance(risk,matrix);
+      const significanceMarkup = significance.value === null
+        ? '<span class="iperc-significance pending">Pendiente</span>'
+        : `<span class="iperc-significance ${significance.value ? 'yes' : 'no'}">${significance.value ? 'Sí' : 'No'}</span><small>${escapeHtml(significance.source)}${significance.reason ? ` · ${escapeHtml(significance.reason)}` : ''}</small>`;
+      const followup = structuredControls.filter(control => control.control_scope === 'planned').map(control => `${control.responsible || 'Sin responsable'} · ${control.due_date ? dateLabel(control.due_date) : 'sin fecha'} · ${control.status === 'verified' ? 'Verificado' : control.status === 'implemented' ? 'Implementado' : control.status === 'in_progress' ? 'En curso' : 'Pendiente'}`).join(' | ');
+      const legacyFollowup = risk.responsible ? `${risk.responsible} · ${dateLabel(risk.due_date)} · ${moduleStatusLabel(risk.status)}` : '';
+      const actions = editable ? `<div class="row-actions"><button type="button" class="row-action" data-iperc-risk-edit="${escapeHtml(risk.id)}" title="Editar riesgo y controles" aria-label="Editar riesgo">✎</button><button type="button" class="row-action danger" data-iperc-risk-delete="${escapeHtml(risk.id)}" title="Eliminar riesgo de este borrador" aria-label="Eliminar riesgo">×</button></div>` : '<span class="iperc-readonly-label">Solo lectura</span>';
+      const context = `${ACTIVITY_TYPE_LABELS[risk.activity_type] || 'Tipo pendiente'} · ${risk.exposed_count === null || risk.exposed_count === undefined ? 'Expuestos sin precisar' : `${risk.exposed_count} expuesto(s)`}`;
+      return `<tr><td><b>${escapeHtml(risk.job_position)}</b><small>${escapeHtml(risk.activity || 'Sin actividad')} · ${escapeHtml(context)}</small></td><td><b>${escapeHtml(risk.hazard)}</b><small>${escapeHtml(HAZARD_TYPE_LABELS[risk.hazard_type] || 'Tipo pendiente')} · ${escapeHtml(risk.risk_event || 'Sin evento')} · Daño: ${escapeHtml(risk.consequences || 'Sin daño potencial')}</small>${risk.legal_reference ? `<small>Referencia normativa: ${escapeHtml(risk.legal_reference)}</small>` : ''}</td><td><div class="iperc-controls-summary">${controls}</div></td><td class="iperc-rating-cell">${ratings}</td><td>${significanceMarkup}</td><td>${escapeHtml(followup || legacyFollowup || 'Sin acciones de seguimiento')}${overdue ? '<small class="overdue-text">Fecha vencida</small>' : ''}</td><td>${actions}</td></tr>`;
     }).join('');
+  }
+
+  function currentUserDisplayName() {
+    return String(currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.name || currentUser?.email || '').trim();
   }
 
   function resetIpercMatrixForm() {
@@ -1259,13 +1473,18 @@
     form.classList.add('hidden');
     currentEditingIpercMatrix = null;
     $('#iperc-matrix-form-title').textContent = 'Nueva matriz IPERC';
-    $('#iperc-matrix-form-hint').textContent = 'Define su alcance y adjunta la versión vigente.';
+    $('#iperc-matrix-form-hint').textContent = 'Define su alcance, versión, responsables y archivo original.';
     $('#iperc-matrix-file').required = false;
-    $('#iperc-matrix-file-help').textContent = 'El adjunto se conserva como evidencia privada.';
+    $('#iperc-matrix-approval-file').value = '';
+    $('#iperc-matrix-approval-file-help').textContent = 'Adjunta un acta o constancia administrativa. La app no genera ni valida firmas electrónicas.';
+    form.elements.namedItem('approval_status').value = 'draft';
   }
 
   function openIpercMatrixForm(matrix = null, source = null) {
     if (!company) { showToast('Completa primero el perfil de tu empresa.', 'error'); switchView('company'); return; }
+    if (matrix && (!isLatestIpercVersion(matrix) || matrix.approval_status === 'approved')) {
+      showToast('Las versiones históricas o aprobadas son de solo lectura. Crea una nueva versión.', 'error'); return;
+    }
     resetIpercMatrixForm();
     const form = $('#iperc-matrix-form');
     currentEditingIpercMatrix = matrix;
@@ -1273,29 +1492,45 @@
       form.elements.namedItem('id').value = matrix.id;
       form.elements.namedItem('matrix_group_id').value = matrix.matrix_group_id;
       form.elements.namedItem('version_number').value = matrix.version_number;
-      ['title', 'site', 'process', 'responsible', 'review_date', 'methodology_notes', 'notes'].forEach(name => { form.elements.namedItem(name).value = matrix[name] ?? ''; });
-      $('#iperc-matrix-form-title').textContent = `Editar IPERC · V${matrix.version_number}`;
-      $('#iperc-matrix-form-hint').textContent = 'Edita los datos de esta versión. Para conservar el historial, usa “Nueva versión” en vez de sobrescribirla.';
-      $('#iperc-matrix-file-help').textContent = matrix.file_name ? `Adjunto actual: ${matrix.file_name}. Elige otro para reemplazarlo; si no, se conserva.` : 'Esta versión no tiene adjunto; selecciona uno para completar la evidencia.';
+      ['title','site','process','responsible','review_date','methodology_notes','notes','prepared_on','prepared_by','approval_status','approved_by','approval_note','change_reason'].forEach(name => {
+        const input = form.elements.namedItem(name);
+        if (input) input.value = matrix[name] ?? '';
+      });
+      form.elements.namedItem('prepared_on').value = matrix.prepared_on || (matrix.created_at || '').slice(0,10) || todayISO();
+      $('#iperc-matrix-form-title').textContent = `Editar borrador · V${matrix.version_number}`;
+      $('#iperc-matrix-form-hint').textContent = 'Esta versión aún no está aprobada. Al aprobarla quedará bloqueada; cambios posteriores requieren crear otra versión.';
+      $('#iperc-matrix-file-help').textContent = matrix.file_name ? `Archivo actual de esta versión: ${matrix.file_name}. Si adjuntas otro, ambos objetos se conservan de forma privada.` : 'Adjunta el original correspondiente a esta versión.';
       $('#iperc-matrix-file').required = !matrix.file_path;
+      $('#iperc-matrix-approval-file-help').textContent = matrix.approval_file_name ? `Constancia actual: ${matrix.approval_file_name}. Puedes adjuntar una nueva; la anterior se conserva.` : 'Adjunta una constancia si corresponde; no se genera firma digital.';
     } else if (source) {
+      if (!isLatestIpercVersion(source)) { showToast('Solo puedes crear una versión nueva desde la última versión.', 'error'); return; }
       const groupVersions = ipercMatrices.filter(item => item.matrix_group_id === source.matrix_group_id);
       const nextVersion = Math.max(...groupVersions.map(item => Number(item.version_number)), 0) + 1;
       form.elements.namedItem('matrix_group_id').value = source.matrix_group_id;
       form.elements.namedItem('version_number').value = nextVersion;
       form.elements.namedItem('source_matrix_id').value = source.id;
-      ['title', 'site', 'process', 'responsible', 'methodology_notes'].forEach(name => { form.elements.namedItem(name).value = source[name] ?? ''; });
+      ['title','site','process','responsible','methodology_notes'].forEach(name => { form.elements.namedItem(name).value = source[name] ?? ''; });
       form.elements.namedItem('review_date').value = '';
       form.elements.namedItem('notes').value = source.notes || '';
+      form.elements.namedItem('prepared_on').value = todayISO();
+      form.elements.namedItem('prepared_by').value = currentUserDisplayName();
+      form.elements.namedItem('approval_status').value = 'draft';
+      form.elements.namedItem('approved_by').value = '';
+      form.elements.namedItem('approval_note').value = '';
+      form.elements.namedItem('change_reason').value = `Actualización a partir de V${source.version_number}`;
       $('#iperc-matrix-form-title').textContent = `Crear versión V${nextVersion}`;
-      $('#iperc-matrix-form-hint').textContent = `Se copiarán los riesgos de V${source.version_number}; la versión anterior quedará conservada.`;
+      $('#iperc-matrix-form-hint').textContent = `Se copiarán los riesgos y controles de V${source.version_number}; la versión anterior queda conservada y bloqueada.`;
       $('#iperc-matrix-file').required = true;
-      $('#iperc-matrix-file-help').textContent = 'Adjunta el archivo correspondiente a esta nueva versión.';
+      $('#iperc-matrix-file-help').textContent = 'Adjunta el archivo original correspondiente a esta nueva versión.';
     } else {
       form.elements.namedItem('matrix_group_id').value = newUuid();
       form.elements.namedItem('version_number').value = 1;
+      form.elements.namedItem('prepared_on').value = todayISO();
+      form.elements.namedItem('prepared_by').value = currentUserDisplayName();
+      form.elements.namedItem('approval_status').value = 'draft';
+      form.elements.namedItem('change_reason').value = 'Versión inicial';
       $('#iperc-matrix-file').required = true;
-      $('#iperc-matrix-file-help').textContent = 'Adjunta PDF, Excel o CSV. Máximo 15 MB; almacenamiento privado.';
+      $('#iperc-matrix-file-help').textContent = 'Adjunta PDF, Excel o CSV. Máximo 15 MB; se conserva privado con esta versión.';
     }
     form.classList.remove('hidden');
     form.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1305,7 +1540,15 @@
   function validateIpercFile(file) {
     if (!file) return true;
     if (file.size > MAX_UPLOAD_SIZE) { showToast('El archivo supera el límite de 15 MB.', 'error'); return false; }
-    if (!['pdf', 'xls', 'xlsx', 'csv'].includes(fileExtension(file.name))) { showToast('Para IPERC adjunta PDF, Excel o CSV.', 'error'); return false; }
+    if (!['pdf','xls','xlsx','csv'].includes(fileExtension(file.name))) { showToast('Para el archivo original IPERC adjunta PDF, Excel o CSV.', 'error'); return false; }
+    return true;
+  }
+
+  function validateIpercEvidenceFile(file, type = 'control') {
+    if (!file) return true;
+    if (file.size > MAX_UPLOAD_SIZE) { showToast('La evidencia supera el límite de 15 MB.', 'error'); return false; }
+    const allowed = type === 'approval' ? ['pdf','jpg','jpeg','png'] : ['pdf','jpg','jpeg','png'];
+    if (!allowed.includes(fileExtension(file.name))) { showToast('Adjunta evidencia PDF o imagen JPG/PNG.', 'error'); return false; }
     return true;
   }
 
@@ -1315,20 +1558,26 @@
     const form = event.currentTarget;
     const values = Object.fromEntries(new FormData(form).entries());
     const file = $('#iperc-matrix-file').files[0] || null;
+    const approvalFile = $('#iperc-matrix-approval-file').files[0] || null;
     const isNew = !values.id;
     const isNewVersion = isNew && Boolean(values.source_matrix_id);
     const existing = values.id ? ipercMatrices.find(item => item.id === values.id) : null;
-    if (values.id && (!existing || !isLatestIpercVersion(existing))) { showToast('Solo puedes editar la última versión; crea una nueva para conservar el historial.', 'error'); return; }
+    if (values.id && (!existing || !isEditableIpercVersion(existing))) { showToast('Las versiones históricas o aprobadas no se editan; crea una nueva versión.', 'error'); return; }
     if (isNewVersion) {
       const source = ipercMatrices.find(item => item.id === values.source_matrix_id);
       if (!source || !isLatestIpercVersion(source)) { showToast('La versión de origen ya no es la última. Vuelve a abrir “Nueva versión”.', 'error'); return; }
     }
     if (file && !validateIpercFile(file)) return;
-    if (isNew && !file) { showToast('Adjunta el archivo de esta versión IPERC.', 'error'); $('#iperc-matrix-file').focus(); return; }
+    if (approvalFile && !validateIpercEvidenceFile(approvalFile,'approval')) return;
+    if (isNew && !file) { showToast('Adjunta el archivo original de esta versión IPERC.', 'error'); $('#iperc-matrix-file').focus(); return; }
+    if (!String(values.change_reason || '').trim()) { showToast('Indica el motivo de esta versión.', 'error'); $('#iperc-matrix-change-reason').focus(); return; }
+    if (values.approval_status === 'approved' && !String(values.approved_by || '').trim()) { showToast('Indica quién aprobó esta versión.', 'error'); $('#iperc-matrix-approved-by').focus(); return; }
+    if (values.approval_status === 'approved' && !String(values.approval_note || '').trim() && !approvalFile && !existing?.approval_file_path) { showToast('Añade una constancia/nota o adjunta evidencia de aprobación. No se requiere firma digital.', 'error'); $('#iperc-matrix-approval-note').focus(); return; }
     const sourceForSnapshot = values.source_matrix_id ? ipercMatrices.find(item => item.id === values.source_matrix_id) : null;
     const selectedMethodSnapshot = isNew
       ? (methodologySnapshot(ipercMethodology) || methodologyFromMatrix(sourceForSnapshot))
       : (existing?.methodology_snapshot || null);
+    const approvalStatus = values.approval_status || 'draft';
     const payload = {
       company_id: company.id,
       matrix_group_id: values.matrix_group_id || newUuid(),
@@ -1340,9 +1589,19 @@
       process: values.process.trim() || null,
       responsible: values.responsible.trim() || null,
       review_date: values.review_date || null,
+      prepared_on: values.prepared_on || null,
+      prepared_by: values.prepared_by.trim() || null,
+      approval_status: approvalStatus,
+      approved_by: approvalStatus === 'approved' ? values.approved_by.trim() : null,
+      approved_at: approvalStatus === 'approved' ? (existing?.approval_status === 'approved' ? existing.approved_at : new Date().toISOString()) : null,
+      approval_note: values.approval_note.trim() || null,
+      change_reason: values.change_reason.trim(),
       methodology_notes: values.methodology_notes.trim() || null,
       notes: values.notes.trim() || null
     };
+    const stagePayload = approvalStatus === 'approved'
+      ? { ...payload, approval_status:'draft', approved_by:null, approved_at:null }
+      : payload;
     const button = form.querySelector('button[type="submit"]');
     const oldText = button.textContent;
     button.disabled = true;
@@ -1350,32 +1609,38 @@
     try {
       let saved;
       if (values.id) {
-        const rows = await restRequest('iperc_matrices', { method: 'PATCH', query: `id=eq.${encodeURIComponent(values.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`, body: payload, prefer: 'return=representation' });
+        const rows = await restRequest('iperc_matrices', { method: 'PATCH', query: `id=eq.${encodeURIComponent(values.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`, body: stagePayload, prefer: 'return=representation' });
         saved = rows?.[0];
       } else {
-        const rows = await restRequest('iperc_matrices', { method: 'POST', query: 'select=*', body: payload, prefer: 'return=representation' });
+        const rows = await restRequest('iperc_matrices', { method: 'POST', query: 'select=*', body: stagePayload, prefer: 'return=representation' });
         saved = rows?.[0];
       }
       if (!saved?.id) throw new Error('No se pudo guardar la matriz IPERC.');
-      if (isNew) {
-        form.elements.namedItem('id').value = saved.id;
-        values.id = saved.id;
-      }
       selectedIpercMatrixId = saved.id;
+      const metadata = {};
       if (file) {
-        const filePath = `${company.id}/iperc/${saved.id}/${cleanFileName(file.name)}`;
+        const filePath = `${company.id}/iperc/${saved.id}/${newUuid()}_${cleanFileName(file.name)}`;
         await uploadPrivateFile(filePath, file);
-        const metadata = { file_path: filePath, file_name: file.name, file_size: file.size, mime_type: fileMime(file) };
-        const rows = await restRequest('iperc_matrices', { method: 'PATCH', query: `id=eq.${encodeURIComponent(saved.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`, body: metadata, prefer: 'return=representation' });
-        saved = rows?.[0] || { ...saved, ...metadata };
-        if (existing?.file_path && existing.file_path !== filePath) {
-          try { await removePrivateFile(existing.file_path); } catch { /* Keep the updated reference; old private file can be cleaned later. */ }
-        }
+        Object.assign(metadata,{file_path:filePath,file_name:file.name,file_size:file.size,mime_type:fileMime(file)});
+      }
+      if (approvalFile) {
+        const evidencePath = `${company.id}/iperc-approvals/${saved.id}/${newUuid()}_${cleanFileName(approvalFile.name)}`;
+        await uploadPrivateFile(evidencePath,approvalFile);
+        Object.assign(metadata,{approval_file_path:evidencePath,approval_file_name:approvalFile.name,approval_file_size:approvalFile.size,approval_mime_type:fileMime(approvalFile)});
+      }
+      if (Object.keys(metadata).length) {
+        const rows = await restRequest('iperc_matrices',{method:'PATCH',query:`id=eq.${encodeURIComponent(saved.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`,body:metadata,prefer:'return=representation'});
+        saved = rows?.[0] || {...saved,...metadata};
+      }
+      if (approvalStatus === 'approved') {
+        const approvalRows = await restRequest('iperc_matrices',{method:'PATCH',query:`id=eq.${encodeURIComponent(saved.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`,body:{approval_status:'approved',approved_by:payload.approved_by,approved_at:payload.approved_at,approval_note:payload.approval_note},prefer:'return=representation'});
+        saved = approvalRows?.[0] || {...saved,approval_status:'approved',approved_by:payload.approved_by,approved_at:payload.approved_at};
       }
       ipercQualityResult = null;
       await reloadWorkspaceData();
       resetIpercMatrixForm();
-      showToast(isNewVersion ? `Versión V${saved.version_number} creada; los riesgos anteriores fueron copiados.` : isNew ? 'Matriz IPERC creada.' : 'Matriz IPERC actualizada.');
+      const statusLabel = APPROVAL_STATUS_LABELS[saved.approval_status || approvalStatus] || 'Borrador';
+      showToast(isNewVersion ? `Versión V${saved.version_number} creada · ${statusLabel}; la anterior se conserva.` : isNew ? `Matriz IPERC creada · ${statusLabel}.` : `Versión guardada · ${statusLabel}.`);
     } catch (error) {
       showToast(friendlyError(error), 'error');
       try { await reloadWorkspaceData(); } catch { /* Preserve the input form for correction/retry. */ }
@@ -1399,12 +1664,16 @@
     suggestionButton?.setAttribute('aria-expanded', 'false');
     if (suggestionButton) suggestionButton.textContent = 'Mostrar sugerencias';
     $('#iperc-risk-form-title').textContent = 'Añadir riesgo';
+    renderIpercControlEditors([]);
+    $('#iperc-risk-existing-controls').value = '';
+    $('#iperc-risk-additional-controls').value = '';
+    $('#iperc-risk-existing-controls').closest('details').open = false;
     configureIpercRiskScoringFields(ipercMatrices.find(item => item.id === selectedIpercMatrixId));
   }
 
   function openIpercRiskForm(risk = null) {
     const matrix = ipercMatrices.find(item => item.id === selectedIpercMatrixId);
-    if (!matrix || !isLatestIpercVersion(matrix)) { showToast('Selecciona la última versión para editar riesgos.', 'error'); return; }
+    if (!matrix || !isEditableIpercVersion(matrix)) { showToast('Selecciona la última versión no aprobada para editar riesgos; las aprobadas son de solo lectura.', 'error'); return; }
     resetIpercRiskForm();
     const form = $('#iperc-risk-form');
     form.elements.namedItem('matrix_id').value = matrix.id;
@@ -1412,13 +1681,96 @@
     configureIpercRiskScoringFields(matrix);
     if (risk) {
       form.elements.namedItem('id').value = risk.id;
-      ['job_position','activity','hazard','risk_event','consequences','existing_controls','initial_rating','initial_probability','initial_severity','additional_controls','residual_rating','residual_probability','residual_severity','responsible','due_date','status'].forEach(name => { form.elements.namedItem(name).value = risk[name] ?? ''; });
-      $('#iperc-risk-form-title').textContent = 'Editar peligro y controles';
+      const regularFields = ['job_position','activity','activity_type','exposed_count','hazard','hazard_type','risk_event','consequences','legal_reference','significance_override_reason','initial_rating','initial_probability','initial_severity','residual_rating','residual_probability','residual_severity','responsible','due_date','status','existing_controls','additional_controls'];
+      regularFields.forEach(name => { const input=form.elements.namedItem(name); if (input) input.value = risk[name] ?? ''; });
+      const significance = form.elements.namedItem('significant_risk_override');
+      significance.value = risk.significant_risk_override === true ? 'true' : risk.significant_risk_override === false ? 'false' : '';
+      ['a','b','c','d'].forEach(index => {
+        form.elements.namedItem(`initial_index_${index}`).value = risk[`initial_index_${index}`] ?? '';
+        form.elements.namedItem(`residual_index_${index}`).value = risk[`residual_index_${index}`] ?? '';
+      });
+      form.elements.namedItem('initial_severity_abcd').value = risk.initial_severity ?? '';
+      form.elements.namedItem('residual_severity_abcd').value = risk.residual_severity ?? '';
+      $('#iperc-risk-form-title').textContent = 'Editar peligro, evaluación y controles';
+      const oldControls = ipercControlRowsForHazard(risk.id);
+      renderIpercControlEditors(oldControls);
+      $('#iperc-risk-existing-controls').closest('details').open = Boolean(risk.existing_controls || risk.additional_controls);
+    } else {
+      renderIpercControlEditors([]);
     }
+    syncIpercExposedIndexA();
     updateIpercCalculationPreview();
     form.classList.remove('hidden');
     form.scrollIntoView({ behavior: 'smooth', block: 'center' });
     $('#iperc-risk-position').focus();
+  }
+
+  function collectIpercControlDrafts(form) {
+    const drafts = [];
+    for (const row of $$('.iperc-control-editor-row',form)) {
+      const read = name => row.querySelector(`[name="${name}"]`)?.value ?? '';
+      const file = row.querySelector('[name="evidence_file"]')?.files?.[0] || null;
+      const draft = {
+        id: read('control_id') || null,
+        control_scope: read('control_scope') || 'planned',
+        hierarchy: read('hierarchy'),
+        description: read('description').trim(),
+        responsible: read('responsible').trim(),
+        due_date: read('due_date') || null,
+        status: read('status') || 'pending',
+        evidence_path: read('evidence_path') || null,
+        evidence_name: read('evidence_name') || null,
+        evidence_size: read('evidence_size') ? Number(read('evidence_size')) : null,
+        evidence_mime_type: read('evidence_mime_type') || null,
+        file
+      };
+      if (!draft.description && !file && !draft.id && !draft.hierarchy) continue;
+      if (!draft.description) throw new Error('Completa la descripción de cada control que agregues.');
+      if (!draft.hierarchy) throw new Error('Clasifica cada control según la jerarquía de controles.');
+      if (!['existing','planned'].includes(draft.control_scope)) throw new Error('Selecciona si cada control existe o está planificado.');
+      if (file && !validateIpercEvidenceFile(file,'control')) throw new Error('Revisa el archivo de evidencia del control.');
+      drafts.push(draft);
+    }
+    return drafts;
+  }
+
+  async function syncIpercControlsForHazard(hazardId, drafts) {
+    const current = ipercControlRowsForHazard(hazardId);
+    const kept = new Set();
+    for (const draft of drafts) {
+      const id = draft.id || newUuid();
+      let evidencePath = draft.evidence_path;
+      let evidenceName = draft.evidence_name;
+      let evidenceSize = draft.evidence_size;
+      let evidenceMime = draft.evidence_mime_type;
+      if (draft.file) {
+        evidencePath = `${company.id}/iperc-control-evidence/${hazardId}/${id}/${newUuid()}_${cleanFileName(draft.file.name)}`;
+        await uploadPrivateFile(evidencePath,draft.file);
+        evidenceName = draft.file.name;
+        evidenceSize = draft.file.size;
+        evidenceMime = fileMime(draft.file);
+      }
+      const payload = {
+        id, company_id:company.id, hazard_id:hazardId,
+        control_scope:draft.control_scope, hierarchy:draft.hierarchy,
+        description:draft.description, responsible:draft.responsible || null,
+        due_date:draft.due_date, status:draft.status,
+        evidence_path:evidencePath, evidence_name:evidenceName,
+        evidence_size:evidenceSize, evidence_mime_type:evidenceMime
+      };
+      if (current.some(control => control.id === id)) {
+        const rows = await restRequest('iperc_controls',{method:'PATCH',query:`id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`,body:payload,prefer:'return=representation'});
+        if (!rows?.length) throw new Error('No se pudo actualizar un control de esta versión.');
+      } else {
+        const rows = await restRequest('iperc_controls',{method:'POST',query:'select=*',body:payload,prefer:'return=representation'});
+        if (!rows?.length) throw new Error('No se pudo crear un control de esta versión.');
+      }
+      kept.add(id);
+    }
+    const removed = current.filter(control => !kept.has(control.id));
+    for (const control of removed) {
+      await restRequest('iperc_controls',{method:'DELETE',query:`id=eq.${encodeURIComponent(control.id)}&company_id=eq.${encodeURIComponent(company.id)}`});
+    }
   }
 
   async function submitIpercRisk(event) {
@@ -1426,67 +1778,98 @@
     const form = event.currentTarget;
     const values = Object.fromEntries(new FormData(form).entries());
     const matrix = ipercMatrices.find(item => item.id === values.matrix_id);
-    if (!matrix || !isLatestIpercVersion(matrix)) { showToast('Crea o selecciona la última versión de la matriz para actualizar los riesgos.', 'error'); return; }
+    if (!matrix || !isEditableIpercVersion(matrix)) { showToast('Crea una versión nueva antes de editar riesgos de una versión histórica o aprobada.', 'error'); return; }
+    if (!String(values.activity || '').trim() || !values.activity_type) { showToast('Completa la actividad y su tipo (rutinaria, no rutinaria o emergencia).','error'); return; }
+    if (!values.hazard_type) { showToast('Clasifica el tipo de peligro.','error'); return; }
     const method = methodologyFromMatrix(matrix);
     const factorValue = name => values[name] === '' || values[name] === undefined ? null : Number(values[name]);
-    const factors = {
-      initial_probability: factorValue('initial_probability'),
-      initial_severity: factorValue('initial_severity'),
-      residual_probability: factorValue('residual_probability'),
-      residual_severity: factorValue('residual_severity')
-    };
+    const exposedCount = values.exposed_count === '' || values.exposed_count === undefined ? null : Number(values.exposed_count);
+    if (exposedCount !== null && (!Number.isInteger(exposedCount) || exposedCount < (method?.methodology_type === 'rm050_abcd' ? 1 : 0))) { showToast('El número de expuestos debe ser un entero dentro del rango permitido.','error'); return; }
+    const factors = { initial_probability:null,initial_severity:null,residual_probability:null,residual_severity:null };
+    let derivedIndexA = null;
+    if (method?.methodology_type === 'rm050_abcd') {
+      derivedIndexA = deriveIpercIndexA(exposedCount);
+      if (!derivedIndexA) { showToast('Ingresa el número de personas expuestas para derivar el índice A.','error'); $('#iperc-risk-exposed-count').focus(); return; }
+      const indexes = ['a','b','c','d'];
+      const initial = indexes.map(index => index === 'a' ? derivedIndexA : factorValue(`initial_index_${index}`));
+      const residual = indexes.map(index => index === 'a' ? derivedIndexA : factorValue(`residual_index_${index}`));
+      const initialSeverity = factorValue('initial_severity_abcd');
+      const residualSeverity = factorValue('residual_severity_abcd');
+      const validIndexes = pairs => pairs.every(value => Number.isInteger(value) && value>=1 && value<=3);
+      if (!validIndexes(initial) || !validIndexes(residual) || ![initialSeverity,residualSeverity].every(value => Number.isInteger(value) && value>=1 && value<=3)) {
+        showToast('Completa los índices A, B, C y D (1–3) y severidad (1–3), para evaluación inicial y residual.','error'); return;
+      }
+      factors.initial_probability = initial.reduce((sum,value)=>sum+value,0);
+      factors.initial_severity = initialSeverity;
+      factors.residual_probability = residual.reduce((sum,value)=>sum+value,0);
+      factors.residual_severity = residualSeverity;
+    } else if (method) {
+      factors.initial_probability=factorValue('initial_probability');
+      factors.initial_severity=factorValue('initial_severity');
+      factors.residual_probability=factorValue('residual_probability');
+      factors.residual_severity=factorValue('residual_severity');
+    }
     if (method) {
       const valid = factors.initial_probability !== null && factors.initial_severity !== null && factors.residual_probability !== null && factors.residual_severity !== null
         && factors.initial_probability >= method.probability_min && factors.initial_probability <= method.probability_max
         && factors.residual_probability >= method.probability_min && factors.residual_probability <= method.probability_max
         && factors.initial_severity >= method.severity_min && factors.initial_severity <= method.severity_max
         && factors.residual_severity >= method.severity_min && factors.residual_severity <= method.severity_max;
-      if (!valid) { showToast('Completa los cuatro factores dentro de la escala configurada.', 'error'); return; }
-      try {
-        evaluateIpercFormula(method.formula, factors.initial_probability, factors.initial_severity);
-        evaluateIpercFormula(method.formula, factors.residual_probability, factors.residual_severity);
-      } catch (error) { showToast(`No se puede calcular: ${error.message}`, 'error'); return; }
+      if (!valid) { showToast('Completa los factores iniciales y residuales dentro de la escala fijada en esta versión.','error'); return; }
+      try { evaluateIpercFormula(method.formula,factors.initial_probability,factors.initial_severity); evaluateIpercFormula(method.formula,factors.residual_probability,factors.residual_severity); }
+      catch(error) { showToast(`No se puede calcular: ${error.message}`,'error'); return; }
     }
+    const override = values.significant_risk_override === '' ? null : values.significant_risk_override === 'true';
+    if (override !== null && !String(values.significance_override_reason || '').trim()) { showToast('Explica el motivo de la clasificación manual de riesgo significativo.','error'); $('#iperc-risk-significance-reason').focus(); return; }
+    let controlDrafts;
+    try { controlDrafts = collectIpercControlDrafts(form); }
+    catch(error) { showToast(error.message,'error'); return; }
     const payload = {
-      company_id: company.id,
-      matrix_id: matrix.id,
-      ...factors,
-      job_position: values.job_position.trim(),
-      activity: values.activity.trim() || null,
-      hazard: values.hazard.trim(),
-      risk_event: values.risk_event.trim() || null,
-      consequences: values.consequences.trim() || null,
-      existing_controls: values.existing_controls.trim() || null,
-      initial_rating: values.initial_rating.trim() || null,
-      additional_controls: values.additional_controls.trim() || null,
-      residual_rating: values.residual_rating.trim() || null,
-      responsible: values.responsible.trim() || null,
-      due_date: values.due_date || null,
-      status: values.status || 'pending'
+      company_id:company.id,matrix_id:matrix.id,...factors,
+      job_position:values.job_position.trim(),activity:values.activity.trim(),activity_type:values.activity_type,
+      exposed_count:exposedCount,hazard:values.hazard.trim(),hazard_type:values.hazard_type,
+      risk_event:values.risk_event.trim()||null,consequences:values.consequences.trim()||null,
+      legal_reference:values.legal_reference.trim()||null,
+      significant_risk_override:override,significance_override_reason:override===null?null:values.significance_override_reason.trim(),
+      existing_controls:values.existing_controls.trim()||null,additional_controls:values.additional_controls.trim()||null,
+      initial_rating:values.initial_rating.trim()||null,residual_rating:values.residual_rating.trim()||null,
+      initial_index_a:method?.methodology_type==='rm050_abcd'?derivedIndexA:null,
+      initial_index_b:method?.methodology_type==='rm050_abcd'?factorValue('initial_index_b'):null,
+      initial_index_c:method?.methodology_type==='rm050_abcd'?factorValue('initial_index_c'):null,
+      initial_index_d:method?.methodology_type==='rm050_abcd'?factorValue('initial_index_d'):null,
+      residual_index_a:method?.methodology_type==='rm050_abcd'?derivedIndexA:null,
+      residual_index_b:method?.methodology_type==='rm050_abcd'?factorValue('residual_index_b'):null,
+      residual_index_c:method?.methodology_type==='rm050_abcd'?factorValue('residual_index_c'):null,
+      residual_index_d:method?.methodology_type==='rm050_abcd'?factorValue('residual_index_d'):null,
+      responsible:values.responsible.trim()||null,due_date:values.due_date||null,status:values.status||'pending'
     };
-    const button = form.querySelector('button[type="submit"]');
-    const oldText = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Guardando…';
+    const button=form.querySelector('button[type="submit"]');
+    const oldText=button.textContent;
+    button.disabled=true;button.textContent='Guardando…';
     try {
+      let saved;
       if (values.id) {
-        const rows = await restRequest('iperc_hazards', { method: 'PATCH', query: `id=eq.${encodeURIComponent(values.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`, body: payload, prefer: 'return=representation' });
-        if (!rows?.length) throw new Error('No se encontró el riesgo para actualizar.');
+        const rows=await restRequest('iperc_hazards',{method:'PATCH',query:`id=eq.${encodeURIComponent(values.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`,body:payload,prefer:'return=representation'});
+        saved=rows?.[0]; if(!saved?.id) throw new Error('No se encontró el riesgo para actualizar.');
       } else {
-        await restRequest('iperc_hazards', { method: 'POST', query: 'select=*', body: payload, prefer: 'return=representation' });
+        const rows=await restRequest('iperc_hazards',{method:'POST',query:'select=*',body:payload,prefer:'return=representation'});
+        saved=rows?.[0]; if(!saved?.id) throw new Error('No se pudo crear el riesgo.');
       }
-      ipercQualityResult = null;
+      await syncIpercControlsForHazard(saved.id,controlDrafts);
+      ipercQualityResult=null;
       await reloadWorkspaceData();
       resetIpercRiskForm();
-      showToast(values.id ? 'Riesgo actualizado.' : 'Riesgo agregado.');
-    } catch (error) { showToast(friendlyError(error), 'error'); }
-    finally { button.disabled = false; button.textContent = oldText; }
+      showToast(values.id?'Riesgo y controles actualizados.':'Riesgo y controles agregados.');
+    } catch(error) {
+      showToast(friendlyError(error),'error');
+      try { await reloadWorkspaceData(); } catch { /* Show the saved form for a retry. */ }
+    } finally { button.disabled=false;button.textContent=oldText; }
   }
 
   async function deleteIpercRisk(id) {
     const risk = ipercHazards.find(item => item.id === id);
     const matrix = ipercMatrices.find(item => item.id === risk?.matrix_id);
-    if (!risk || !matrix || !isLatestIpercVersion(matrix)) { showToast('Solo puedes modificar riesgos de la última versión.', 'error'); return; }
+    if (!risk || !matrix || !isEditableIpercVersion(matrix)) { showToast('Solo puedes modificar riesgos de la última versión no aprobada.', 'error'); return; }
     if (!window.confirm(`¿Eliminar el peligro “${risk.hazard}” de esta versión?`)) return;
     try {
       await restRequest('iperc_hazards', { method: 'DELETE', query: `id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(company.id)}` });
@@ -1498,8 +1881,8 @@
 
   async function deleteIpercMatrix(id) {
     const matrix = ipercMatrices.find(item => item.id === id);
-    if (!matrix || !isLatestIpercVersion(matrix)) return;
-    if (!window.confirm(`¿Eliminar la última versión V${matrix.version_number} de “${matrix.title}” y sus riesgos? El resto del historial se conserva.`)) return;
+    if (!matrix || !isEditableIpercVersion(matrix) || matrix.approval_status !== 'draft') return;
+    if (!window.confirm(`¿Eliminar el borrador V${matrix.version_number} de “${matrix.title}” y sus riesgos/controles? Las versiones anteriores aprobadas se conservan.`)) return;
     try {
       await restRequest('iperc_matrices', { method: 'DELETE', query: `id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(company.id)}` });
       let fileWarning = false;
@@ -1514,12 +1897,15 @@
   function exportIpercRisksCsv() {
     const matrix = ipercMatrices.find(item => item.id === selectedIpercMatrixId);
     if (!matrix) { showToast('Selecciona una matriz IPERC primero.', 'error'); return; }
-    const headers = ['Matriz','Version','Sede','Proceso','Puesto','Actividad','Peligro','Evento de riesgo','Consecuencias','Controles existentes','Probabilidad inicial','Severidad inicial','Puntaje inicial calculado','Nivel inicial calculado','Nota inicial conservada','Medidas adicionales','Probabilidad residual','Severidad residual','Puntaje residual calculado','Nivel residual calculado','Nota residual conservada','Responsable','Fecha de seguimiento','Estado'];
+    const headers = ['Matriz','Versión','Sede','Proceso','Puesto','Actividad','Tipo de actividad','Número de expuestos','Peligro','Tipo de peligro','Evento de riesgo','Daño potencial / consecuencias','Referencia normativa (no validada)','Riesgo significativo','Motivo de anulación','Controles estructurados por jerarquía','Controles heredados en texto','P inicial','A inicial','B inicial','C inicial','D inicial','S inicial','Puntaje inicial','Nivel inicial','Nota histórica inicial','P residual (valoración registrada)','A residual (valoración registrada)','B residual (valoración registrada)','C residual (valoración registrada)','D residual (valoración registrada)','S residual (valoración registrada)','Puntaje residual (calculado sobre los factores ingresados)','Nivel residual (calculado)','Alcance del residual','Nota histórica residual','Responsable general','Fecha general','Estado general'];
     const risks = ipercHazards.filter(item => item.matrix_id === matrix.id);
     const rows = risks.map(item => {
       const initial = ipercRiskEvaluation(item, matrix, 'initial');
       const residual = ipercRiskEvaluation(item, matrix, 'residual');
-      return [matrix.title, matrix.version_number, matrix.site, matrix.process, item.job_position, item.activity, item.hazard, item.risk_event, item.consequences, item.existing_controls, item.initial_probability, item.initial_severity, initial && !initial.error ? initial.score : '', initial && !initial.error ? initial.label : '', item.initial_rating, item.additional_controls, item.residual_probability, item.residual_severity, residual && !residual.error ? residual.score : '', residual && !residual.error ? residual.label : '', item.residual_rating, item.responsible, item.due_date, moduleStatusLabel(item.status)];
+      const significance = ipercRiskSignificance(item,matrix);
+      const controls = ipercControlRowsForHazard(item.id).map(control => `${control.control_scope==='existing'?'Existente':'Planificado'} · ${CONTROL_HIERARCHY_LABELS[control.hierarchy]||control.hierarchy}: ${control.description} [${control.status}; resp.: ${control.responsible||'—'}; fecha: ${control.due_date||'—'}; evidencia: ${control.evidence_name||'—'}]`).join(' | ');
+      const legacyControls=[item.existing_controls?`Existentes: ${item.existing_controls}`:'',item.additional_controls?`Medidas: ${item.additional_controls}`:''].filter(Boolean).join(' | ');
+      return [matrix.title,matrix.version_number,matrix.site,matrix.process,item.job_position,item.activity,ACTIVITY_TYPE_LABELS[item.activity_type]||'',item.exposed_count, item.hazard,HAZARD_TYPE_LABELS[item.hazard_type]||'',item.risk_event,item.consequences,item.legal_reference,significance.value===null?'Pendiente':significance.value?'Sí':'No',significance.reason,controls,legacyControls,item.initial_probability,item.initial_index_a,item.initial_index_b,item.initial_index_c,item.initial_index_d,item.initial_severity,initial&&!initial.error?initial.score:'',initial&&!initial.error?initial.label:'',item.initial_rating,item.residual_probability,item.residual_index_a,item.residual_index_b,item.residual_index_c,item.residual_index_d,item.residual_severity,residual&&!residual.error?residual.score:'',residual&&!residual.error?residual.label:'','Valoración registrada por usuario; no verifica implementación ni eficacia de controles.',item.residual_rating,item.responsible,item.due_date,moduleStatusLabel(item.status)];
     });
     const csvCell = value => {
       let text = String(value ?? '').replace(/\r?\n/g, ' ');
@@ -1540,7 +1926,8 @@
 
   function editIpercMatrix(id) {
     const matrix = ipercMatrices.find(item => item.id === id);
-    if (matrix && isLatestIpercVersion(matrix)) openIpercMatrixForm(matrix);
+    if (matrix && isEditableIpercVersion(matrix)) openIpercMatrixForm(matrix);
+    else showToast('Las versiones históricas o aprobadas no se editan. Crea una nueva versión.', 'error');
   }
 
   function createIpercVersion(id) {
@@ -2017,7 +2404,7 @@
     try { if (session?.access_token) await authRequest('logout', { token: session.access_token }); }
     catch { /* Clear the local session even if the remote session already expired. */ }
     saveSession(null);
-    currentUser = null; company = null; employees = []; tasks = []; sstRecords = []; ipercMatrices = []; ipercHazards = []; ipercMethodology = null; selectedIpercMatrixId = null; ipercQualityResult = null;
+    currentUser = null; company = null; employees = []; tasks = []; sstRecords = []; ipercMatrices = []; ipercHazards = []; ipercControls = []; ipercMethodology = null; selectedIpercMatrixId = null; ipercQualityResult = null;
     setAuthTab('login');
     showAuth();
   }
@@ -2190,12 +2577,13 @@
   async function reloadWorkspaceData() {
     if (!company) return;
     const companyId = encodeURIComponent(company.id);
-    const [employeeRows, taskRows, recordRows, matrixRows, hazardRows, methodologyRows] = await Promise.all([
+    const [employeeRows, taskRows, recordRows, matrixRows, hazardRows, controlRows, methodologyRows] = await Promise.all([
       restRequest('employees', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
       restRequest('tasks', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
       restRequest('sst_records', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
       restRequest('iperc_matrices', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
       restRequest('iperc_hazards', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
+      restRequest('iperc_controls', { query: `select=*&company_id=eq.${companyId}&order=created_at.asc` }),
       restRequest('iperc_methodologies', { query: `select=*&company_id=eq.${companyId}&limit=1` })
     ]);
     employees = employeeRows || [];
@@ -2203,6 +2591,7 @@
     sstRecords = recordRows || [];
     ipercMatrices = matrixRows || [];
     ipercHazards = hazardRows || [];
+    ipercControls = controlRows || [];
     ipercMethodology = methodologyRows?.[0] || null;
     renderAll();
   }
@@ -2231,12 +2620,18 @@
     $('#iperc-risk-form').addEventListener('submit', submitIpercRisk);
     $('#iperc-methodology-form').addEventListener('submit', submitIpercMethodology);
     $('#iperc-methodology-form').addEventListener('input', ipercMethodologyPreview);
+    $('#iperc-methodology-type').addEventListener('change', event => applyIpercMethodTemplate(event.target.value));
     $('#iperc-risk-form').addEventListener('input', event => {
-      if (event.target.matches('[data-risk-factor]')) updateIpercCalculationPreview();
+      if (event.target.matches('#iperc-risk-exposed-count')) { syncIpercExposedIndexA(); updateIpercCalculationPreview(); }
+      if (event.target.matches('[data-risk-factor],[data-risk-index]')) updateIpercCalculationPreview();
       if (event.target.matches('#iperc-risk-activity')) renderIpercSuggestions();
       clearIpercQualityResult();
     });
-    $('#iperc-risk-form').addEventListener('change', clearIpercQualityResult);
+    $('#iperc-risk-form').addEventListener('change', event => {
+      if (event.target.matches('#iperc-risk-exposed-count')) syncIpercExposedIndexA();
+      if (event.target.matches('[data-risk-factor],[data-risk-index],#iperc-risk-exposed-count')) updateIpercCalculationPreview();
+      clearIpercQualityResult();
+    });
     $('#iperc-matrix-form').addEventListener('input', clearIpercQualityResult);
     $('#run-iperc-quality-check').addEventListener('click', runIpercQualityCheck);
     $('#toggle-iperc-suggestions').addEventListener('click', event => {
@@ -2284,12 +2679,17 @@
     $('#iperc-empty-create').addEventListener('click', () => openIpercMatrixForm());
     $('#cancel-iperc-matrix').addEventListener('click', resetIpercMatrixForm);
     $('#cancel-iperc-matrix-text').addEventListener('click', resetIpercMatrixForm);
+    $('#iperc-matrix-approval-status').addEventListener('change', event => {
+      if (event.target.value === 'approved' && !$('#iperc-matrix-approved-by').value.trim()) $('#iperc-matrix-approved-by').value = currentUserDisplayName();
+    });
+    $('#add-iperc-control').addEventListener('click', () => addIpercControlEditorRow());
     $('#iperc-matrix-list').addEventListener('click', event => {
       const select = event.target.closest('[data-iperc-select]');
       const edit = event.target.closest('[data-iperc-edit]');
       const version = event.target.closest('[data-iperc-new-version]');
       const remove = event.target.closest('[data-iperc-delete]');
       const download = event.target.closest('[data-iperc-download]');
+      const approvalDownload = event.target.closest('[data-iperc-approval-download]');
       if (select) { resetIpercRiskForm(); ipercQualityResult = null; selectedIpercMatrixId = select.dataset.ipercSelect; renderIpercWorkbench(); }
       if (edit) editIpercMatrix(edit.dataset.ipercEdit);
       if (version) createIpercVersion(version.dataset.ipercNewVersion);
@@ -2297,6 +2697,10 @@
       if (download) {
         const matrix = ipercMatrices.find(item => item.id === download.dataset.ipercDownload);
         if (matrix) downloadPrivateFile(matrix);
+      }
+      if (approvalDownload) {
+        const matrix = ipercMatrices.find(item => item.id === approvalDownload.dataset.ipercApprovalDownload);
+        if (matrix?.approval_file_path) downloadPrivateFile({file_path:matrix.approval_file_path,file_name:matrix.approval_file_name});
       }
     });
     $('#export-iperc-risks').addEventListener('click', exportIpercRisksCsv);
@@ -2312,6 +2716,12 @@
         if (risk) openIpercRiskForm(risk);
       }
       if (remove) deleteIpercRisk(remove.dataset.ipercRiskDelete);
+    });
+    $('#iperc-control-editor-list').addEventListener('click', event => {
+      const download = event.target.closest('[data-iperc-control-download]');
+      if (!download) return;
+      const control = ipercControls.find(item => item.id === download.dataset.ipercControlDownload);
+      if (control?.evidence_path) downloadPrivateFile({file_path:control.evidence_path,file_name:control.evidence_name});
     });
     $('#export-evidence').addEventListener('click', exportEvidenceCsv);
     $('#print-evidence').addEventListener('click', () => window.print());
