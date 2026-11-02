@@ -9,7 +9,7 @@
   const STORAGE_BUCKET = 'sst-documents';
   const MAX_UPLOAD_SIZE = 15 * 1024 * 1024;
   const MODULES = {
-    iperc: { title: 'IPERC y riesgos', eyebrow: 'IDENTIFICACIÓN DE PELIGROS', description: 'Versiona matrices, configura el cálculo según la metodología de tu empresa y revisa requisitos generales de SST con evidencia referenciada.', upload: true, requiredFile: true, accept: '.pdf,.xls,.xlsx,.csv', fileHelp: 'Adjunta la matriz en PDF, Excel o CSV. Máximo 15 MB.' },
+    iperc: { title: 'IPERC y riesgos', eyebrow: 'IDENTIFICACIÓN DE PELIGROS', description: 'Versiona matrices, configura el cálculo, consulta sugerencias de peligros por actividad y comprueba la completitud de cada IPERC.', upload: true, requiredFile: true, accept: '.pdf,.xls,.xlsx,.csv', fileHelp: 'Adjunta la matriz en PDF, Excel o CSV. Máximo 15 MB.' },
     epp: { title: 'Entrega y reposición de EPP', eyebrow: 'EQUIPOS DE PROTECCIÓN', description: 'Organiza entregas y reposiciones con constancias adjuntas; no incluye firma digital del trabajador.', upload: true, accept: '.pdf,.xlsx,.csv,.jpg,.jpeg,.png', fileHelp: 'Adjunta constancias o evidencias administrativas; evita datos médicos.' },
     committee: { title: 'Comité de SST', eyebrow: 'COMITÉ Y ACUERDOS', description: 'Da seguimiento a fechas, actas y acuerdos; elecciones, votos y firmas aún no están conectados.', upload: true, accept: '.pdf,.docx,.xlsx,.csv,.jpg,.jpeg,.png', fileHelp: 'Adjunta actas o documentos del Comité. No se registran votos individuales.' },
     incidents: { title: 'Incidentes y acciones', eyebrow: 'REPORTE Y SEGUIMIENTO', description: 'Organiza reportes, investigaciones y medidas correctivas sin guardar diagnósticos ni resultados clínicos.', upload: true, accept: '.pdf,.docx,.xlsx,.csv,.jpg,.jpeg,.png', fileHelp: 'Sube evidencia operativa. No incluyas diagnósticos ni información clínica.' },
@@ -31,6 +31,22 @@
     { title: 'RISST y constancia administrativa', moduleKey: 'management_docs', needsFile: true, match: 'risst|reglamento' },
     { title: 'Accidentes e incidentes', moduleKey: 'incidents', needsFile: true }
   ];
+  const IPERC_RISK_SUGGESTIONS = [
+    { id: 'site-walkways', activity: 'Tránsito y orden en zona de trabajo', aliases: ['pasillo','desorden','obstaculo','obstaculos','cable','piso','transito','limpieza','orden','acceso'], hazard: 'Superficies de tránsito con desniveles, obstáculos o materiales sueltos', risk_event: 'Tropiezo, resbalón o caída al mismo nivel', consequences: 'Golpes, esguinces u otras lesiones por caída', controls: 'Revisar rutas, orden, iluminación, acceso y retiro de obstáculos según la tarea y el lugar.' },
+    { id: 'manual-handling', activity: 'Traslado y manipulación de materiales', aliases: ['carga','bulto','material','materiales','traslado','levantamiento','esfuerzo','manual','almacen'], hazard: 'Manipulación manual de materiales, equipos o herramientas', risk_event: 'Sobreesfuerzo, golpe o atrapamiento durante el levantamiento y traslado', consequences: 'Molestia o lesión musculoesquelética, golpe o atrapamiento', controls: 'Revisar peso, frecuencia, ayudas disponibles, ruta, agarre y organización de la tarea.' },
+    { id: 'hand-tools', activity: 'Uso de herramientas manuales', aliases: ['herramienta','herramientas','martillo','llave','corte','cincel','manual'], hazard: 'Bordes, puntas o fuerza aplicada con herramientas manuales', risk_event: 'Corte, punción, golpe o atrapamiento de dedos', consequences: 'Heridas, contusiones o lesión en manos', controls: 'Revisar selección y estado de herramientas, método de trabajo, almacenamiento y protección necesaria.' },
+    { id: 'power-tools', activity: 'Uso de herramientas eléctricas portátiles', aliases: ['taladro','amoladora','esmeril','sierra','electrica','eléctrica','herramienta','perforacion','perforación'], hazard: 'Partes móviles, energía eléctrica y proyección de partículas de herramientas portátiles', risk_event: 'Contacto con partes móviles, corte, descarga eléctrica o impacto de partículas', consequences: 'Heridas, lesión ocular, quemadura o descarga eléctrica', controls: 'Verificar herramienta adecuada y en buen estado, resguardos, inspección, área de trabajo y capacitación aplicable.' },
+    { id: 'maintenance-energy', activity: 'Mantenimiento de equipos y máquinas', aliases: ['mantenimiento','maquina','máquina','equipo','equipos','reparacion','reparación','atasco','bomba','motor'], hazard: 'Energía eléctrica, mecánica, hidráulica, neumática o energía almacenada', risk_event: 'Arranque inesperado o liberación de energía durante intervención', consequences: 'Atrapamiento, golpe, quemadura o descarga eléctrica', controls: 'Revisar el procedimiento autorizado de control de energías, aislamiento, verificación y competencias antes de intervenir.' },
+    { id: 'electrical-work', activity: 'Instalación o mantenimiento eléctrico', aliases: ['electricidad','electrico','eléctrico','tablero','cableado','circuito','energia','energía','voltaje'], hazard: 'Contacto con partes eléctricas energizadas o defectuosas', risk_event: 'Contacto eléctrico directo o indirecto', consequences: 'Descarga, quemadura o lesión grave', controls: 'Confirmar autorización, evaluación de la tarea y procedimiento de control de energía aplicable; no iniciar si faltan controles aprobados.' },
+    { id: 'ladder-work', activity: 'Uso de escaleras y acceso a desnivel', aliases: ['escalera','escaleras','altura','techo','cubierta','desnivel','borde'], hazard: 'Trabajo sobre nivel inferior o acceso mediante escalera', risk_event: 'Pérdida de equilibrio y caída a distinto nivel', consequences: 'Fractura, lesión grave o fatalidad', controls: 'Revisar equipo y superficie de apoyo, acceso, condiciones del lugar y protección contra caídas definida para la tarea.' },
+    { id: 'scaffold-platform', activity: 'Trabajo en andamio o plataforma', aliases: ['andamio','plataforma','altura','baranda','borde','elevacion','elevación'], hazard: 'Trabajo en altura, borde abierto o plataforma inestable', risk_event: 'Caída de persona u objetos desde altura o pérdida de estabilidad', consequences: 'Lesión grave o fatalidad de trabajadores o terceros', controls: 'Verificar montaje, estabilidad, acceso, protecciones y condiciones de uso por personal competente según el procedimiento del sitio.' },
+    { id: 'hot-work', activity: 'Soldadura, corte o trabajo en caliente', aliases: ['soldadura','soldar','oxicorte','corte','chispas','caliente','esmerilado'], hazard: 'Chispas, superficies calientes, radiación y humos de trabajo en caliente', risk_event: 'Quemadura, proyección, inhalación de humos o inicio de incendio', consequences: 'Quemadura, lesión ocular o respiratoria, incendio y daños', controls: 'Revisar autorización y procedimiento del sitio, ventilación, materiales combustibles cercanos y respuesta ante incendio.' },
+    { id: 'excavation', activity: 'Excavación y movimiento de terreno', aliases: ['excavacion','excavación','zanja','zanjeo','terreno','suelo','demolicion','demolición'], hazard: 'Inestabilidad del terreno, bordes y posibles servicios enterrados', risk_event: 'Derrumbe, caída a excavación o contacto con servicio enterrado', consequences: 'Atrapamiento, golpe, descarga o lesión grave', controls: 'Solicitar evaluación y diseño de controles por personal competente, verificar interferencias y accesos; no ingresar a una excavación sin evaluación y controles aprobados.' },
+    { id: 'mobile-equipment', activity: 'Tránsito de vehículos y equipos móviles', aliases: ['montacargas','vehiculo','vehículo','camion','camión','retroexcavadora','grua','grúa','tránsito','transito','atropello','maquinaria'], hazard: 'Movimiento de vehículos, maquinaria o equipos móviles cerca de peatones', risk_event: 'Atropello, colisión, golpe o atrapamiento', consequences: 'Lesión grave o fatalidad', controls: 'Revisar segregación de rutas, visibilidad, señalización, comunicación y autorización/competencia de operadores.' },
+    { id: 'dust-noise', activity: 'Corte, perforación o demolición con polvo y ruido', aliases: ['polvo','silice','sílice','ruido','vibracion','vibración','demolicion','demolición','corte','perforacion','perforación'], hazard: 'Polvo, ruido y vibración generados por la tarea', risk_event: 'Inhalación de partículas o exposición a ruido/vibración', consequences: 'Irritación o daño a la salud según agente, intensidad y tiempo de exposición', controls: 'Revisar agentes, tiempo de exposición, métodos de reducción, ventilación/contención y protección necesaria con SST.' },
+    { id: 'coatings-solvents', activity: 'Aplicación de pintura, adhesivos o solventes', aliases: ['pintura','pintar','solvente','solventes','adhesivo','pegamento','quimico','químico'], hazard: 'Vapores, salpicaduras o contacto con pinturas, adhesivos y solventes', risk_event: 'Inhalación, contacto con piel/ojos o derrame', consequences: 'Irritación u otros efectos según producto y exposición', controls: 'Identificar el producto, revisar etiqueta/hoja de seguridad, ventilación, compatibilidad, almacenamiento y protección aplicable.' },
+    { id: 'weather-work', activity: 'Trabajo exterior y exposición al clima', aliases: ['exterior','intemperie','calor','frio','frío','lluvia','viento','sol','radiacion','radiación'], hazard: 'Exposición a calor, frío, lluvia, viento o radiación solar', risk_event: 'Exposición ambiental durante la ejecución de la tarea', consequences: 'Malestar, caída, deshidratación u otros efectos según condiciones', controls: 'Revisar pronóstico y condiciones, pausas, hidratación, protección, superficies y criterios para detener/reprogramar la tarea.' }
+  ];
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -43,9 +59,8 @@
   let ipercMatrices = [];
   let ipercHazards = [];
   let ipercMethodology = null;
-  let legalRequirements = [];
-  let legalAssessments = [];
   let selectedIpercMatrixId = null;
+  let ipercQualityResult = null;
   let currentEditingIpercMatrix = null;
   let currentEditingIpercRisk = null;
   let currentModuleKey = 'iperc';
@@ -350,15 +365,13 @@
     company = await ensureCompany(user);
     if (company) {
       const companyId = encodeURIComponent(company.id);
-      const [employeeRows, taskRows, recordRows, matrixRows, hazardRows, methodologyRows, requirementRows, assessmentRows] = await Promise.all([
+      const [employeeRows, taskRows, recordRows, matrixRows, hazardRows, methodologyRows] = await Promise.all([
         restRequest('employees', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
         restRequest('tasks', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
         restRequest('sst_records', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
         restRequest('iperc_matrices', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
         restRequest('iperc_hazards', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
-        restRequest('iperc_methodologies', { query: `select=*&company_id=eq.${companyId}&limit=1` }),
-        restRequest('sst_legal_requirements', { query: 'select=*&is_active=eq.true&order=sort_order.asc' }),
-        restRequest('sst_legal_assessments', { query: `select=*&company_id=eq.${companyId}&order=updated_at.desc` })
+        restRequest('iperc_methodologies', { query: `select=*&company_id=eq.${companyId}&limit=1` })
       ]);
       employees = employeeRows || [];
       tasks = taskRows || [];
@@ -366,8 +379,6 @@
       ipercMatrices = matrixRows || [];
       ipercHazards = hazardRows || [];
       ipercMethodology = methodologyRows?.[0] || null;
-      legalRequirements = requirementRows || [];
-      legalAssessments = assessmentRows || [];
     } else {
       employees = [];
       tasks = [];
@@ -375,8 +386,6 @@
       ipercMatrices = [];
       ipercHazards = [];
       ipercMethodology = null;
-      legalRequirements = [];
-      legalAssessments = [];
       selectedIpercMatrixId = null;
     }
     showApp();
@@ -790,6 +799,187 @@
     } catch { return { error: 'Revisar método' }; }
   }
 
+  function normalizeIpercSearch(value) {
+    return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
+  function renderIpercSuggestions() {
+    const list = $('#iperc-suggestions-list');
+    const activityInput = $('#iperc-risk-activity');
+    if (!list || !activityInput) return;
+    const query = normalizeIpercSearch(activityInput.value);
+    const terms = query.split(/\s+/).filter(term => term.length > 2);
+    const ranked = IPERC_RISK_SUGGESTIONS.map(item => {
+      const searchable = normalizeIpercSearch([item.activity, item.hazard, ...item.aliases].join(' '));
+      const matches = terms.reduce((count, term) => count + (searchable.includes(term) ? 1 : 0), 0);
+      return { item, matches };
+    }).filter(result => !terms.length || result.matches > 0)
+      .sort((a, b) => b.matches - a.matches || IPERC_RISK_SUGGESTIONS.indexOf(a.item) - IPERC_RISK_SUGGESTIONS.indexOf(b.item));
+    const hint = $('#iperc-suggestions-hint');
+    if (hint) {
+      hint.textContent = terms.length
+        ? (ranked.length ? `${ranked.length} sugerencia(s) relacionadas con “${activityInput.value.trim()}”. Revisa si cada una aplica a la tarea real.` : 'No encontré coincidencias exactas. Prueba otra palabra o borra la actividad para consultar el catálogo completo.')
+        : `Catálogo orientativo de construcción y mantenimiento · ${IPERC_RISK_SUGGESTIONS.length} ideas. Selecciona solo las que apliquen después de revisar el lugar y la tarea.`;
+    }
+    if (!ranked.length) {
+      list.innerHTML = '<div class="iperc-suggestion-empty">Sin coincidencias. Puedes escribir la actividad manualmente y completar el riesgo con la persona responsable de SST.</div>';
+      return;
+    }
+    list.innerHTML = ranked.map(({ item }) => `<article class="iperc-suggestion-card"><div class="iperc-suggestion-card-top"><span>${escapeHtml(item.activity)}</span><button type="button" class="button secondary small-button" data-iperc-suggestion-use="${escapeHtml(item.id)}">Usar como borrador</button></div><p><b>Peligro:</b> ${escapeHtml(item.hazard)}</p><p><b>Evento:</b> ${escapeHtml(item.risk_event)}</p><p><b>Consecuencias posibles:</b> ${escapeHtml(item.consequences)}</p><details><summary>Idea de control para revisar</summary><p>${escapeHtml(item.controls)}</p></details></article>`).join('');
+  }
+
+  function useIpercSuggestion(suggestionId) {
+    const item = IPERC_RISK_SUGGESTIONS.find(suggestion => suggestion.id === suggestionId);
+    const form = $('#iperc-risk-form');
+    if (!item || !form) return;
+    const fieldsToReplace = ['hazard','risk_event','consequences','additional_controls'];
+    const hasExistingText = fieldsToReplace.some(name => String(form.elements.namedItem(name).value || '').trim());
+    if (hasExistingText && !window.confirm('La sugerencia reemplazará el peligro, evento, consecuencia y medida adicional escritos. ¿Continuar?')) return;
+    form.elements.namedItem('activity').value = form.elements.namedItem('activity').value.trim() || item.activity;
+    form.elements.namedItem('hazard').value = item.hazard;
+    form.elements.namedItem('risk_event').value = item.risk_event;
+    form.elements.namedItem('consequences').value = item.consequences;
+    form.elements.namedItem('additional_controls').value = item.controls;
+    renderIpercSuggestions();
+    ipercQualityResult = null;
+    renderIpercQualityPanel();
+    showToast('Sugerencia cargada como borrador. Verifica si aplica, completa el puesto y ajusta los controles y factores antes de guardar.');
+    updateIpercCalculationPreview();
+  }
+
+  function ipercHasFactorPair(risk, stage) {
+    const probability = risk?.[`${stage}_probability`];
+    const severity = risk?.[`${stage}_severity`];
+    return probability !== null && probability !== undefined && probability !== '' && severity !== null && severity !== undefined && severity !== '' && Number.isInteger(Number(probability)) && Number.isInteger(Number(severity));
+  }
+
+  function ipercHasRecordedRating(risk, stage, matrix) {
+    if (ipercHasFactorPair(risk, stage)) {
+      const evaluation = ipercRiskEvaluation(risk, matrix, stage);
+      if (evaluation && !evaluation.error) return true;
+    }
+    return Boolean(String(risk?.[`${stage}_rating`] || '').trim());
+  }
+
+  function evaluateIpercCompleteness(matrix, risks) {
+    const items = Array.isArray(risks) ? risks : [];
+    const criteria = [];
+    const addCriterion = (key, label, weight, ratio, detail, improvement = '', neutral = false) => {
+      const normalizedRatio = Math.max(0, Math.min(1, Number(ratio) || 0));
+      criteria.push({ key, label, weight, ratio: normalizedRatio, points: neutral ? 0 : Math.round(weight * normalizedRatio * 10) / 10, detail, improvement, neutral });
+    };
+    const hasText = value => Boolean(String(value ?? '').trim());
+    const ratio = (count, total) => total ? count / total : 0;
+    const matrixFields = ['site','process','responsible','review_date'];
+    const matrixFieldsComplete = matrixFields.filter(field => hasText(matrix?.[field])).length;
+    addCriterion('scope', 'Alcance y revisión de la matriz', 10, matrixFieldsComplete / matrixFields.length, `${matrixFieldsComplete}/${matrixFields.length} datos: sede, proceso, responsable y próxima revisión.`, 'Completa los datos que faltan en la ficha de la matriz.');
+    addCriterion('risks', 'Riesgos estructurados en esta versión', 10, items.length ? 1 : 0, items.length ? `${items.length} riesgo(s) registrado(s) como filas estructuradas.` : 'No hay riesgos estructurados. Adjuntar un Excel no importa sus filas automáticamente.', 'Agrega los peligros y riesgos aplicables como registros por puesto y actividad.');
+    const taskComplete = items.filter(risk => hasText(risk.job_position) && hasText(risk.activity)).length;
+    addCriterion('task', 'Puesto y actividad identificados', 15, ratio(taskComplete, items.length), items.length ? `${taskComplete}/${items.length} riesgos tienen puesto y actividad.` : 'Se revisa al agregar riesgos.', 'Completa el puesto y la tarea/actividad en cada registro.');
+    const chainFields = items.reduce((sum, risk) => sum + ['hazard','risk_event','consequences'].filter(field => hasText(risk[field])).length, 0);
+    const chainTotal = items.length * 3;
+    addCriterion('risk-description', 'Peligro, evento y consecuencias descritos', 15, ratio(chainFields, chainTotal), items.length ? `${chainFields}/${chainTotal} campos registrados en la secuencia peligro–evento–consecuencia.` : 'Se revisa al agregar riesgos.', 'Completa la secuencia: fuente peligrosa, evento posible y consecuencia.');
+    const existingControls = items.filter(risk => hasText(risk.existing_controls)).length;
+    addCriterion('existing-controls', 'Controles existentes documentados', 10, ratio(existingControls, items.length), items.length ? `${existingControls}/${items.length} riesgos describen controles existentes.` : 'Se revisa al agregar riesgos.', 'Describe qué controles ya existen; no marques como existente una medida que aún no se implementó.');
+    const initialRated = items.filter(risk => ipercHasRecordedRating(risk, 'initial', matrix)).length;
+    const initialMethod = Boolean(methodologyFromMatrix(matrix));
+    addCriterion('initial-rating', 'Valoración inicial registrada', 15, ratio(initialRated, items.length), items.length ? `${initialRated}/${items.length} riesgos tienen factores calculables o una valoración histórica en texto.` : 'Se revisa al agregar riesgos.', initialMethod ? 'Completa probabilidad y severidad iniciales dentro de la escala de esta versión.' : 'Configura una metodología y crea una versión nueva para usar puntajes; las valoraciones históricas en texto se conservan y no se convierten.');
+    const highRisks = items.filter(risk => {
+      const evaluation = ipercRiskEvaluation(risk, matrix, 'initial');
+      if (evaluation && !evaluation.error) return evaluation.index >= 2;
+      return /alto|crit|high/i.test(normalizeIpercSearch(risk.initial_rating || ''));
+    });
+    const highWithControls = highRisks.filter(risk => hasText(risk.additional_controls)).length;
+    addCriterion('high-controls', 'Medidas adicionales para riesgos altos/críticos', 10, highRisks.length ? ratio(highWithControls, highRisks.length) : 1, highRisks.length ? `${highWithControls}/${highRisks.length} niveles altos/críticos tienen medidas adicionales descritas.` : 'No se identificaron niveles altos/críticos con las valoraciones registradas; si faltan factores, esta comprobación no permite descartarlos.', 'Describe medidas adicionales para los riesgos altos/críticos y verifica su implementación.', !highRisks.length);
+    const residualRated = items.filter(risk => ipercHasRecordedRating(risk, 'residual', matrix)).length;
+    addCriterion('residual-rating', 'Valoración residual registrada', 10, ratio(residualRated, items.length), items.length ? `${residualRated}/${items.length} riesgos tienen factores residuales calculables o una valoración histórica en texto.` : 'Se revisa al agregar riesgos.', 'Completa la valoración residual después de considerar las medidas; el texto histórico no se transforma.');
+    const openActions = items.filter(risk => hasText(risk.additional_controls) && risk.status !== 'done');
+    const trackedActions = openActions.filter(risk => hasText(risk.responsible) && hasText(risk.due_date)).length;
+    addCriterion('action-followup', 'Responsable y fecha para acciones abiertas', 5, openActions.length ? ratio(trackedActions, openActions.length) : 1, openActions.length ? `${trackedActions}/${openActions.length} acciones abiertas tienen responsable y fecha.` : 'No hay acciones adicionales abiertas que requieran seguimiento.', 'Asigna responsable y fecha de seguimiento a cada acción pendiente/en curso.', !openActions.length);
+    const applicableCriteria = criteria.filter(item => !item.neutral);
+    const applicableWeight = applicableCriteria.reduce((sum, item) => sum + item.weight, 0);
+    const earnedPoints = applicableCriteria.reduce((sum, item) => sum + item.points, 0);
+    const score = applicableWeight ? Math.max(0, Math.min(100, Math.round(earnedPoints / applicableWeight * 100))) : 0;
+    const level = score < 50 ? { label: 'Bajo', className: 'low' } : score < 80 ? { label: 'Medio', className: 'medium' } : { label: 'Excelente', className: 'excellent' };
+    const reviewFlags = [];
+    if (!initialMethod && items.some(risk => ipercHasFactorPair(risk, 'initial') || ipercHasFactorPair(risk, 'residual'))) reviewFlags.push('Hay factores numéricos, pero esta versión no guarda una metodología; el puntaje no puede interpretarse con una fórmula snapshot.');
+    items.forEach(risk => {
+      const initial = ipercRiskEvaluation(risk, matrix, 'initial');
+      const residual = ipercRiskEvaluation(risk, matrix, 'residual');
+      if (initial && residual && !initial.error && !residual.error && residual.score > initial.score) reviewFlags.push(`Revisa “${risk.hazard || risk.activity || 'riesgo sin título'}”: el puntaje residual supera al inicial según la fórmula guardada.`);
+    });
+    return { score, ...level, criteria, reviewFlags, riskCount: items.length, thresholds: '0–49 Bajo · 50–79 Medio · 80–100 Excelente' };
+  }
+
+  function clearIpercQualityResult() {
+    ipercQualityResult = null;
+    renderIpercQualityPanel();
+  }
+
+  function renderIpercQualityPanel() {
+    const panel = $('#iperc-quality-section');
+    if (!panel) return;
+    const matrix = ipercMatrices.find(item => item.id === selectedIpercMatrixId);
+    const button = $('#run-iperc-quality-check');
+    const meta = $('#iperc-quality-meta');
+    const empty = $('#iperc-quality-empty');
+    const result = $('#iperc-quality-result');
+    if (!matrix) {
+      meta.textContent = 'Selecciona una matriz para revisar su contenido.';
+      button.disabled = true;
+      button.textContent = 'Probar autoevaluación IPERC';
+      empty.classList.remove('hidden');
+      result.classList.add('hidden');
+      return;
+    }
+    const isLatest = isLatestIpercVersion(matrix);
+    meta.textContent = `Versión ${matrix.version_number} · ${matrix.title}${isLatest ? ' · vigente' : ' · historial de solo lectura'} · ${ipercHazards.filter(risk => risk.matrix_id === matrix.id).length} riesgo(s) estructurado(s)`;
+    button.disabled = false;
+    button.textContent = 'Probar autoevaluación IPERC';
+    if (!ipercQualityResult || ipercQualityResult.matrixId !== matrix.id) {
+      empty.classList.remove('hidden');
+      result.classList.add('hidden');
+      return;
+    }
+    empty.classList.add('hidden');
+    result.classList.remove('hidden');
+    const assessment = ipercQualityResult.assessment;
+    $('#iperc-quality-score').textContent = `${assessment.score}%`;
+    const level = $('#iperc-quality-level');
+    level.textContent = assessment.label;
+    level.className = `iperc-quality-level ${assessment.className}`;
+    const progress = $('.iperc-quality-progress');
+    progress.setAttribute('aria-valuenow', String(assessment.score));
+    $('#iperc-quality-progress-fill').style.width = `${assessment.score}%`;
+    const applicableCount = assessment.criteria.filter(item => !item.neutral).length;
+    $('#iperc-quality-score-caption').textContent = `Completitud de ${assessment.riskCount} riesgo(s) · ${applicableCount} criterios aplicables · ${assessment.thresholds}. No es un puntaje de cumplimiento legal.`;
+    const completed = assessment.criteria.filter(item => item.ratio >= 1 && !item.neutral);
+    const incomplete = assessment.criteria.filter(item => item.ratio < 1);
+    $('#iperc-quality-strengths').innerHTML = completed.length
+      ? completed.map(item => `<li><b>${escapeHtml(item.label)}</b><span>${escapeHtml(item.detail)}</span></li>`).join('')
+      : '<li><span>Aún no hay criterios completos en esta versión.</span></li>';
+    $('#iperc-quality-improvements').innerHTML = incomplete.length
+      ? incomplete.map(item => `<li><b>${escapeHtml(item.label)}</b><span>${escapeHtml(item.improvement)} ${escapeHtml(item.detail)}</span></li>`).join('')
+      : '<li><b>Sin faltantes de registro detectados.</b><span>Verifica de todas formas las condiciones reales de trabajo y que los peligros sean pertinentes.</span></li>';
+    $('#iperc-quality-checks').innerHTML = assessment.criteria.map(item => {
+      const status = item.neutral ? 'No aplica con los datos actuales' : item.ratio >= 1 ? 'Completo' : item.ratio > 0 ? 'Parcial' : 'Pendiente';
+      const pointsLabel = item.neutral ? '—' : `${Math.round(item.points)} / ${item.weight} pts`;
+      return `<article class="iperc-quality-check"><div><b>${escapeHtml(item.label)}</b><span>${escapeHtml(item.detail)}</span></div><strong>${escapeHtml(pointsLabel)}</strong><small class="${item.neutral ? 'neutral' : item.ratio >= 1 ? 'complete' : 'incomplete'}">${escapeHtml(status)}</small></article>`;
+    }).join('');
+    const flags = $('#iperc-quality-review-flags');
+    flags.classList.toggle('hidden', !assessment.reviewFlags.length);
+    flags.innerHTML = assessment.reviewFlags.length ? `<b>Alertas para revisión humana</b><ul>${assessment.reviewFlags.map(flag => `<li>${escapeHtml(flag)}</li>`).join('')}</ul>` : '';
+  }
+
+  function runIpercQualityCheck() {
+    const matrix = ipercMatrices.find(item => item.id === selectedIpercMatrixId);
+    if (!matrix) { showToast('Selecciona una matriz para iniciar la comprobación.', 'error'); return; }
+    const risks = ipercHazards.filter(item => item.matrix_id === matrix.id);
+    ipercQualityResult = { matrixId: matrix.id, assessment: evaluateIpercCompleteness(matrix, risks) };
+    renderIpercQualityPanel();
+    $('#iperc-quality-result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
   function ipercMethodologyPreview() {
     const form = $('#iperc-methodology-form');
     const values = Object.fromEntries(new FormData(form).entries());
@@ -918,6 +1108,7 @@
         const rows = await restRequest('iperc_methodologies', { method: 'POST', query: 'select=*', body: payload, prefer: 'return=representation' });
         if (!rows?.length) throw new Error('No se pudo guardar la metodología.');
       }
+      ipercQualityResult = null;
       await reloadWorkspaceData();
       resetIpercMethodologyForm();
       showToast('Metodología guardada. Las versiones existentes no se recalcularon; crea una versión nueva para aplicar cambios.');
@@ -925,122 +1116,9 @@
     finally { button.disabled = false; button.textContent = oldText; }
   }
 
-  function legalStatusLabel(status) {
-    return ({ pending: 'Pendiente', compliant: 'Cumple', partial: 'Parcial', non_compliant: 'No cumple', not_applicable: 'No aplica' })[status] || 'Pendiente';
-  }
-
-  function isLegalRequirementApplicable(requirement) {
-    if (requirement?.conditional_rule === 'employees_20_plus') return Number(company?.employee_count || 0) >= 20;
-    return true;
-  }
-
-  function renderLegalCompliance() {
-    const container = $('#legal-requirement-list');
-    if (!container) return;
-    const requirements = [...legalRequirements].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
-    const applicable = requirements.filter(isLegalRequirementApplicable);
-    const completedStatuses = ['compliant', 'partial', 'non_compliant'];
-    const getStatus = requirement => {
-      if (!isLegalRequirementApplicable(requirement)) return 'not_applicable';
-      const saved = legalAssessments.find(item => item.requirement_id === requirement.id);
-      return saved?.status || 'pending';
-    };
-    const counts = { compliant: 0, partial: 0, non_compliant: 0, pending: 0, not_applicable: 0 };
-    requirements.forEach(requirement => { counts[getStatus(requirement)] = (counts[getStatus(requirement)] || 0) + 1; });
-    const evaluatedStatuses = [...completedStatuses, 'not_applicable'];
-    const evaluated = applicable.filter(requirement => evaluatedStatuses.includes(getStatus(requirement))).length;
-    const totalApplicable = applicable.length;
-    const overview = totalApplicable === 0 ? 'Sin requisitos cargados' : counts.non_compliant ? 'Hay requisitos marcados “No cumple”' : counts.partial ? 'Hay requisitos con evaluación parcial' : counts.pending ? 'La revisión está incompleta' : 'Todos los requisitos base aplicables están marcados como revisados';
-    $('#legal-compliance-summary').innerHTML = `<div class="legal-summary-state"><small>Estado de la autoevaluación</small><b>${escapeHtml(overview)}</b><span>${evaluated} de ${totalApplicable} requisitos aplicables evaluados · ${counts.not_applicable} condicionales no aplicables según el perfil</span></div><div class="legal-summary-count"><small>Cumple</small><b>${counts.compliant}</b></div><div class="legal-summary-count partial"><small>Parcial</small><b>${counts.partial}</b></div><div class="legal-summary-count danger"><small>No cumple</small><b>${counts.non_compliant}</b></div><div class="legal-summary-count muted"><small>Pendiente</small><b>${counts.pending}</b></div>`;
-    if (!requirements.length) {
-      $('#legal-catalog-meta').textContent = 'No se pudo cargar el catálogo base. Verifica que la migración 0005 esté aplicada.';
-      container.innerHTML = '<div class="empty-state"><b>Catálogo no disponible</b><p>La matriz legal aparecerá cuando esté habilitada la migración de autoevaluación.</p></div>';
-      return;
-    }
-    const reviewedDates = [...new Set(requirements.map(requirement => requirement.reviewed_on).filter(Boolean))];
-    const reviewedLabel = reviewedDates.length ? new Intl.DateTimeFormat('es-PE', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${reviewedDates.sort().at(-1)}T00:00:00`)) : 'sin fecha';
-    $('#legal-catalog-meta').textContent = `Catálogo inicial de SST general · ${requirements.length} criterios · revisión de fuentes: ${reviewedLabel} · rubro del perfil: ${company?.sector || 'sin especificar'}`;
-    container.innerHTML = requirements.map(requirement => {
-      const assessment = legalAssessments.find(item => item.requirement_id === requirement.id);
-      const applies = isLegalRequirementApplicable(requirement);
-      const autoStatus = !applies ? 'not_applicable' : null;
-      const status = autoStatus || assessment?.status || 'pending';
-      const applicabilityLabel = requirement.conditional_rule === 'employees_20_plus'
-        ? (applies ? 'Condicional · aplica según el perfil (20+ trabajadores)' : `No aplica según el perfil actual (${Number(company?.employee_count || 0)} trabajadores); revisar si cambia`)
-        : 'Criterio general · verificar su aplicación en la empresa';
-      const statusOptions = [['pending','Pendiente'],['compliant','Cumple'],['partial','Parcial'],['non_compliant','No cumple'],['not_applicable','No aplica']]
-        .map(([value,label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${label}</option>`).join('');
-      const reviewedAt = assessment?.reviewed_at || '';
-      const reviewerDefault = assessment?.reviewed_by || currentUser?.user_metadata?.full_name || currentUser?.email || '';
-      const fieldPrefix = `legal-${escapeHtml(requirement.id)}`;
-      return `<article class="legal-requirement-card" data-legal-card="${escapeHtml(requirement.id)}">
-        <div class="legal-requirement-heading"><div><span class="legal-applicability ${applies ? '' : 'not-applicable'}">${escapeHtml(applicabilityLabel)}</span><h4>${escapeHtml(requirement.title)}</h4><p>${escapeHtml(requirement.requirement_text)}</p><a class="legal-source-link" href="${escapeHtml(requirement.source_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(requirement.legal_reference)} · Ver fuente ↗</a></div><span class="legal-status-chip ${escapeHtml(status)}">${escapeHtml(legalStatusLabel(status))}</span></div>
-        <div class="legal-requirement-guidance"><b>Evidencia orientativa:</b> ${escapeHtml(requirement.evidence_guidance)}</div>
-        <div class="legal-assessment-fields">
-          <div class="field"><label for="${fieldPrefix}-status">Estado de revisión</label><select id="${fieldPrefix}-status" data-legal-field="status" ${!applies ? 'disabled' : ''}>${statusOptions}</select></div>
-          <div class="field"><label for="${fieldPrefix}-reviewed-at">Fecha de revisión</label><input id="${fieldPrefix}-reviewed-at" data-legal-field="reviewed_at" type="date" value="${escapeHtml(reviewedAt)}" ${!applies ? 'disabled' : ''}></div>
-          <div class="field"><label for="${fieldPrefix}-reviewer">Revisado por</label><input id="${fieldPrefix}-reviewer" data-legal-field="reviewed_by" maxlength="160" value="${escapeHtml(reviewerDefault)}" placeholder="Nombre / rol" ${!applies ? 'disabled' : ''}></div>
-          <div class="field full-field"><label for="${fieldPrefix}-evidence-summary">Resumen de evidencia observada</label><textarea id="${fieldPrefix}-evidence-summary" data-legal-field="evidence_summary" rows="2" maxlength="3000" placeholder="Describe brevemente qué se revisó y qué encontraste; no ingreses datos personales de salud." ${!applies ? 'disabled' : ''}>${escapeHtml(assessment?.evidence_summary || '')}</textarea></div>
-          <div class="field full-field"><label for="${fieldPrefix}-evidence-reference">Referencia o ubicación de la evidencia (sin adjuntar)</label><input id="${fieldPrefix}-evidence-reference" data-legal-field="evidence_reference" maxlength="500" value="${escapeHtml(assessment?.evidence_reference || '')}" placeholder="Ej.: carpeta SST / código del documento / URL interna" ${!applies ? 'disabled' : ''}></div>
-          <div class="field full-field"><label for="${fieldPrefix}-review-notes">Notas / justificación (obligatoria para “No aplica”)</label><textarea id="${fieldPrefix}-review-notes" data-legal-field="review_notes" rows="2" maxlength="2000" placeholder="Supuestos, acciones pendientes o razón de no aplicabilidad." ${!applies ? 'disabled' : ''}>${escapeHtml(assessment?.review_notes || '')}</textarea></div>
-        </div>
-        <div class="legal-requirement-footer"><small>${assessment?.updated_at ? `Actualizado ${escapeHtml(dateLabel(String(assessment.updated_at).slice(0,10)))}` : 'Aún no hay evaluación guardada'}</small><button type="button" class="button secondary small-button" data-legal-save="${escapeHtml(requirement.id)}" ${!applies ? 'disabled' : ''}>Guardar evaluación</button></div>
-      </article>`;
-    }).join('');
-  }
-
-  async function saveLegalAssessment(button) {
-    const card = button.closest('[data-legal-card]');
-    const requirementId = card?.dataset.legalCard;
-    const requirement = legalRequirements.find(item => item.id === requirementId);
-    if (!company || !requirement || !isLegalRequirementApplicable(requirement)) return;
-    const value = key => card.querySelector(`[data-legal-field="${key}"]`)?.value || '';
-    const status = value('status') || 'pending';
-    const evidenceSummary = value('evidence_summary').trim();
-    const evidenceReference = value('evidence_reference').trim();
-    const reviewNotes = value('review_notes').trim();
-    if (['compliant','partial','non_compliant'].includes(status) && !evidenceSummary && !evidenceReference) {
-      showToast('Para guardar una evaluación, añade el resumen o la referencia de evidencia observada.', 'error');
-      return;
-    }
-    if (status === 'not_applicable' && !reviewNotes) {
-      showToast('Explica por qué este requisito no aplica a la empresa.', 'error');
-      return;
-    }
-    const payload = {
-      company_id: company.id,
-      requirement_id: requirementId,
-      catalog_version: requirement.catalog_version,
-      requirement_snapshot: { legal_reference: requirement.legal_reference, title: requirement.title, requirement_text: requirement.requirement_text, source_url: requirement.source_url, reviewed_on: requirement.reviewed_on },
-      status,
-      evidence_summary: evidenceSummary || null,
-      evidence_reference: evidenceReference || null,
-      review_notes: reviewNotes || null,
-      reviewed_by: value('reviewed_by').trim() || null,
-      reviewed_at: value('reviewed_at') || (status === 'pending' ? null : todayISO())
-    };
-    const existing = legalAssessments.find(item => item.requirement_id === requirementId);
-    const oldLabel = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Guardando…';
-    try {
-      if (existing) {
-        const rows = await restRequest('sst_legal_assessments', { method: 'PATCH', query: `id=eq.${encodeURIComponent(existing.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`, body: payload, prefer: 'return=representation' });
-        if (!rows?.length) throw new Error('No se pudo actualizar la evaluación.');
-      } else {
-        const rows = await restRequest('sst_legal_assessments', { method: 'POST', query: 'select=*', body: payload, prefer: 'return=representation' });
-        if (!rows?.length) throw new Error('No se pudo guardar la evaluación.');
-      }
-      await reloadWorkspaceData();
-      showToast('Evaluación guardada como autoevaluación con evidencia referenciada.');
-    } catch (error) { showToast(friendlyError(error), 'error'); }
-    finally { button.disabled = false; button.textContent = oldLabel; }
-  }
-
   function renderIpercWorkbench() {
     if (!$('#iperc-workbench')) return;
     renderIpercMethodology();
-    renderLegalCompliance();
     const latestVersions = latestIpercVersions();
     const latestIds = new Set(latestVersions.map(matrix => matrix.id));
     const openHazards = ipercHazards.filter(item => latestIds.has(item.matrix_id) && item.status !== 'done');
@@ -1076,6 +1154,7 @@
       selectedCard?.closest('.iperc-version-card')?.classList.add('selected');
     }
     renderIpercRisks();
+    renderIpercQualityPanel();
   }
 
   function configureIpercRiskScoringFields(matrix) {
@@ -1293,6 +1372,7 @@
           try { await removePrivateFile(existing.file_path); } catch { /* Keep the updated reference; old private file can be cleaned later. */ }
         }
       }
+      ipercQualityResult = null;
       await reloadWorkspaceData();
       resetIpercMatrixForm();
       showToast(isNewVersion ? `Versión V${saved.version_number} creada; los riesgos anteriores fueron copiados.` : isNew ? 'Matriz IPERC creada.' : 'Matriz IPERC actualizada.');
@@ -1313,6 +1393,11 @@
     form.elements.namedItem('status').value = 'pending';
     form.classList.add('hidden');
     currentEditingIpercRisk = null;
+    const suggestionPanel = $('#iperc-suggestions-panel');
+    const suggestionButton = $('#toggle-iperc-suggestions');
+    suggestionPanel?.classList.add('hidden');
+    suggestionButton?.setAttribute('aria-expanded', 'false');
+    if (suggestionButton) suggestionButton.textContent = 'Mostrar sugerencias';
     $('#iperc-risk-form-title').textContent = 'Añadir riesgo';
     configureIpercRiskScoringFields(ipercMatrices.find(item => item.id === selectedIpercMatrixId));
   }
@@ -1390,6 +1475,7 @@
       } else {
         await restRequest('iperc_hazards', { method: 'POST', query: 'select=*', body: payload, prefer: 'return=representation' });
       }
+      ipercQualityResult = null;
       await reloadWorkspaceData();
       resetIpercRiskForm();
       showToast(values.id ? 'Riesgo actualizado.' : 'Riesgo agregado.');
@@ -1404,6 +1490,7 @@
     if (!window.confirm(`¿Eliminar el peligro “${risk.hazard}” de esta versión?`)) return;
     try {
       await restRequest('iperc_hazards', { method: 'DELETE', query: `id=eq.${encodeURIComponent(id)}&company_id=eq.${encodeURIComponent(company.id)}` });
+      ipercQualityResult = null;
       await reloadWorkspaceData();
       showToast('Peligro eliminado.');
     } catch (error) { showToast(friendlyError(error), 'error'); }
@@ -1418,6 +1505,7 @@
       let fileWarning = false;
       if (matrix.file_path) { try { await removePrivateFile(matrix.file_path); } catch { fileWarning = true; } }
       selectedIpercMatrixId = null;
+      ipercQualityResult = null;
       await reloadWorkspaceData();
       showToast(fileWarning ? 'Versión eliminada; no se pudo borrar el archivo privado.' : 'Versión eliminada.');
     } catch (error) { showToast(friendlyError(error), 'error'); }
@@ -1929,7 +2017,7 @@
     try { if (session?.access_token) await authRequest('logout', { token: session.access_token }); }
     catch { /* Clear the local session even if the remote session already expired. */ }
     saveSession(null);
-    currentUser = null; company = null; employees = []; tasks = []; sstRecords = []; ipercMatrices = []; ipercHazards = []; ipercMethodology = null; legalRequirements = []; legalAssessments = []; selectedIpercMatrixId = null;
+    currentUser = null; company = null; employees = []; tasks = []; sstRecords = []; ipercMatrices = []; ipercHazards = []; ipercMethodology = null; selectedIpercMatrixId = null; ipercQualityResult = null;
     setAuthTab('login');
     showAuth();
   }
@@ -2102,15 +2190,13 @@
   async function reloadWorkspaceData() {
     if (!company) return;
     const companyId = encodeURIComponent(company.id);
-    const [employeeRows, taskRows, recordRows, matrixRows, hazardRows, methodologyRows, requirementRows, assessmentRows] = await Promise.all([
+    const [employeeRows, taskRows, recordRows, matrixRows, hazardRows, methodologyRows] = await Promise.all([
       restRequest('employees', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
       restRequest('tasks', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
-      restRequest('sst_records', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
+      restRequest('sst_records', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
       restRequest('iperc_matrices', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
       restRequest('iperc_hazards', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
-      restRequest('iperc_methodologies', { query: `select=*&company_id=eq.${companyId}&limit=1` }),
-      restRequest('sst_legal_requirements', { query: 'select=*&is_active=eq.true&order=sort_order.asc' }),
-      restRequest('sst_legal_assessments', { query: `select=*&company_id=eq.${companyId}&order=updated_at.desc` })
+      restRequest('iperc_methodologies', { query: `select=*&company_id=eq.${companyId}&limit=1` })
     ]);
     employees = employeeRows || [];
     tasks = taskRows || [];
@@ -2118,8 +2204,6 @@
     ipercMatrices = matrixRows || [];
     ipercHazards = hazardRows || [];
     ipercMethodology = methodologyRows?.[0] || null;
-    legalRequirements = requirementRows || [];
-    legalAssessments = assessmentRows || [];
     renderAll();
   }
 
@@ -2147,15 +2231,31 @@
     $('#iperc-risk-form').addEventListener('submit', submitIpercRisk);
     $('#iperc-methodology-form').addEventListener('submit', submitIpercMethodology);
     $('#iperc-methodology-form').addEventListener('input', ipercMethodologyPreview);
-    $('#iperc-risk-form').addEventListener('input', event => { if (event.target.matches('[data-risk-factor]')) updateIpercCalculationPreview(); });
+    $('#iperc-risk-form').addEventListener('input', event => {
+      if (event.target.matches('[data-risk-factor]')) updateIpercCalculationPreview();
+      if (event.target.matches('#iperc-risk-activity')) renderIpercSuggestions();
+      clearIpercQualityResult();
+    });
+    $('#iperc-risk-form').addEventListener('change', clearIpercQualityResult);
+    $('#iperc-matrix-form').addEventListener('input', clearIpercQualityResult);
+    $('#run-iperc-quality-check').addEventListener('click', runIpercQualityCheck);
+    $('#toggle-iperc-suggestions').addEventListener('click', event => {
+      const button = event.currentTarget;
+      const panel = $('#iperc-suggestions-panel');
+      const isOpening = panel.classList.contains('hidden');
+      panel.classList.toggle('hidden', !isOpening);
+      button.setAttribute('aria-expanded', String(isOpening));
+      button.textContent = isOpening ? 'Ocultar sugerencias' : 'Mostrar sugerencias';
+      if (isOpening) renderIpercSuggestions();
+    });
+    $('#iperc-suggestions-list').addEventListener('click', event => {
+      const button = event.target.closest('[data-iperc-suggestion-use]');
+      if (button) useIpercSuggestion(button.dataset.ipercSuggestionUse);
+    });
     $('#configure-iperc-methodology').addEventListener('click', openIpercMethodologyForm);
     $('#load-iperc-methodology-example').addEventListener('click', loadIpercMethodologyExample);
     $('#cancel-iperc-methodology').addEventListener('click', resetIpercMethodologyForm);
     $('#cancel-iperc-methodology-text').addEventListener('click', resetIpercMethodologyForm);
-    $('#legal-requirement-list').addEventListener('click', event => {
-      const save = event.target.closest('[data-legal-save]');
-      if (save) saveLegalAssessment(save);
-    });
     $('#logout-button').addEventListener('click', logout);
 
     $$('[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
@@ -2190,7 +2290,7 @@
       const version = event.target.closest('[data-iperc-new-version]');
       const remove = event.target.closest('[data-iperc-delete]');
       const download = event.target.closest('[data-iperc-download]');
-      if (select) { resetIpercRiskForm(); selectedIpercMatrixId = select.dataset.ipercSelect; renderIpercWorkbench(); }
+      if (select) { resetIpercRiskForm(); ipercQualityResult = null; selectedIpercMatrixId = select.dataset.ipercSelect; renderIpercWorkbench(); }
       if (edit) editIpercMatrix(edit.dataset.ipercEdit);
       if (version) createIpercVersion(version.dataset.ipercNewVersion);
       if (remove) deleteIpercMatrix(remove.dataset.ipercDelete);

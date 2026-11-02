@@ -249,7 +249,11 @@
               <input type="hidden" name="id"><input type="hidden" name="matrix_id">
               <div class="form-grid compact-grid">
                 <div class="field"><label for="iperc-risk-position">Puesto de trabajo *</label><input id="iperc-risk-position" name="job_position" required placeholder="Puesto evaluado"></div>
-                <div class="field"><label for="iperc-risk-activity">Actividad / tarea</label><input id="iperc-risk-activity" name="activity" placeholder="Tarea o actividad"></div>
+                <div class="field"><label for="iperc-risk-activity">Actividad / tarea</label><input id="iperc-risk-activity" name="activity" placeholder="Ej.: mantenimiento de equipo, trabajo con escalera"></div>
+                <div class="field full-field iperc-suggestion-control">
+                  <div class="iperc-suggestion-toolbar"><div><b>¿Quieres ideas para identificar peligros?</b><small>Elige una sugerencia del catálogo para cargarla como borrador y revisarla.</small></div><button id="toggle-iperc-suggestions" type="button" class="button secondary small-button" aria-expanded="false" aria-controls="iperc-suggestions-panel">Mostrar sugerencias</button></div>
+                  <div id="iperc-suggestions-panel" class="iperc-suggestion-panel hidden"><p id="iperc-suggestions-hint">Escribe una actividad para filtrar sugerencias o deja el campo vacío para ver el catálogo general de construcción y mantenimiento.</p><div id="iperc-suggestions-list" class="iperc-suggestion-list"></div></div>
+                </div>
                 <div class="field"><label for="iperc-risk-hazard">Peligro *</label><input id="iperc-risk-hazard" name="hazard" required placeholder="Fuente o situación peligrosa"></div>
                 <div class="field"><label for="iperc-risk-event">Riesgo / evento</label><input id="iperc-risk-event" name="risk_event" placeholder="Evento potencial"></div>
                 <div class="field full-field"><label for="iperc-risk-consequences">Consecuencias posibles</label><textarea id="iperc-risk-consequences" name="consequences" rows="2"></textarea></div>
@@ -268,11 +272,16 @@
             <div class="table-scroll iperc-risk-table-wrap"><table class="iperc-risk-table"><thead><tr><th>PUESTO / ACTIVIDAD</th><th>PELIGRO / RIESGO</th><th>CONTROLES</th><th>RIESGO INICIAL / RESIDUAL</th><th>RESPONSABLE / FECHA</th><th>ESTADO</th><th class="actions-cell">ACCIONES</th></tr></thead><tbody id="iperc-risk-table-body"></tbody></table></div>
             <div id="iperc-risk-empty" class="empty-state hidden"><span class="empty-symbol">＋</span><b>Esta versión aún no tiene riesgos estructurados</b><p>Agrega peligros y controles por puesto. También puedes empezar con una matriz en archivo.</p><button id="iperc-empty-risk" type="button" class="button secondary small-button">＋ Añadir riesgo</button></div>
           </section>
-          <section id="sst-compliance-section" class="panel legal-compliance-panel">
-            <div class="panel-heading"><div><span class="panel-kicker">AUTOEVALUACIÓN · SST GENERAL DEL PERÚ</span><h3>Revisión de requisitos legales</h3><p id="legal-catalog-meta" class="iperc-selected-meta">Catálogo base; revisa el alcance para tu empresa.</p></div><span class="legal-self-assessment-badge">NO ES CERTIFICACIÓN LEGAL</span></div>
-            <div class="legal-compliance-notice">Registra el estado por requisito con una referencia de evidencia. Nexo no lee ni valida documentos, no confirma la aplicación de todas las normas sectoriales y no emite una conclusión legal certificada. No adjuntes documentos: no ingreses datos clínicos, resultados de EMO, diagnósticos ni historias médicas.</div>
-            <div id="legal-compliance-summary" class="legal-compliance-summary"></div>
-            <div id="legal-requirement-list" class="legal-requirement-list"></div>
+          <section id="iperc-quality-section" class="panel iperc-quality-panel">
+            <div class="panel-heading iperc-quality-heading"><div><span class="panel-kicker">PRUEBA DE AUTOVALUACIÓN · IPERC</span><h3>Comprobar mi matriz</h3><p id="iperc-quality-meta" class="iperc-selected-meta">Selecciona una matriz para revisar su contenido.</p></div><button id="run-iperc-quality-check" type="button" class="button primary" disabled>Probar autoevaluación IPERC</button></div>
+            <div class="iperc-quality-notice">El porcentaje revisa la completitud y coherencia básica de los datos registrados: tareas, peligros, controles, factores y seguimiento. No confirma que se hayan detectado todos los peligros en campo, no juzga por sí solo la eficacia de los controles y no es una certificación legal.</div>
+            <div id="iperc-quality-empty" class="iperc-quality-empty">Selecciona una matriz y pulsa <b>Probar autoevaluación IPERC</b>. La prueba se ejecuta sobre la versión seleccionada; vuelve a probarla después de guardar cambios.</div>
+            <div id="iperc-quality-result" class="iperc-quality-result hidden">
+              <div class="iperc-quality-score-card"><div class="iperc-quality-score-line"><strong id="iperc-quality-score">—%</strong><span id="iperc-quality-level" class="iperc-quality-level">Sin evaluar</span></div><div class="iperc-quality-progress" role="progressbar" aria-label="Completitud de la matriz IPERC" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="iperc-quality-progress-fill"></span></div><small id="iperc-quality-score-caption">Puntaje de completitud de esta versión</small></div>
+              <div class="iperc-quality-columns"><section><h4>Qué está completo</h4><ul id="iperc-quality-strengths" class="iperc-quality-list"></ul></section><section><h4>Qué conviene mejorar</h4><ul id="iperc-quality-improvements" class="iperc-quality-list"></ul></section></div>
+              <details class="iperc-quality-details"><summary>Ver comprobaciones y puntaje por criterio</summary><div id="iperc-quality-checks" class="iperc-quality-checks"></div></details>
+              <div id="iperc-quality-review-flags" class="iperc-quality-review-flags hidden"></div>
+            </div>
           </section>
           <div id="iperc-legacy-note" class="iperc-legacy-note hidden">Hay registros IPERC anteriores en formato general. Se conservan debajo; puedes abrirlos para consultarlos o descargarlos.</div>
         </div>
