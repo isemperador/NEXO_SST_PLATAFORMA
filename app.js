@@ -9,7 +9,7 @@
   const STORAGE_BUCKET = 'sst-documents';
   const MAX_UPLOAD_SIZE = 15 * 1024 * 1024;
   const MODULES = {
-    iperc: { title: 'IPERC y riesgos', eyebrow: 'IDENTIFICACIÓN DE PELIGROS', description: 'Carga versiones de tu matriz, controla fechas de revisión y registra peligros y controles por puesto usando la escala de tu empresa.', upload: true, requiredFile: true, accept: '.pdf,.xls,.xlsx,.csv', fileHelp: 'Adjunta la matriz en PDF, Excel o CSV. Máximo 15 MB.' },
+    iperc: { title: 'IPERC y riesgos', eyebrow: 'IDENTIFICACIÓN DE PELIGROS', description: 'Versiona matrices, configura el cálculo según la metodología de tu empresa y revisa requisitos generales de SST con evidencia referenciada.', upload: true, requiredFile: true, accept: '.pdf,.xls,.xlsx,.csv', fileHelp: 'Adjunta la matriz en PDF, Excel o CSV. Máximo 15 MB.' },
     epp: { title: 'Entrega y reposición de EPP', eyebrow: 'EQUIPOS DE PROTECCIÓN', description: 'Organiza entregas y reposiciones con constancias adjuntas; no incluye firma digital del trabajador.', upload: true, accept: '.pdf,.xlsx,.csv,.jpg,.jpeg,.png', fileHelp: 'Adjunta constancias o evidencias administrativas; evita datos médicos.' },
     committee: { title: 'Comité de SST', eyebrow: 'COMITÉ Y ACUERDOS', description: 'Da seguimiento a fechas, actas y acuerdos; elecciones, votos y firmas aún no están conectados.', upload: true, accept: '.pdf,.docx,.xlsx,.csv,.jpg,.jpeg,.png', fileHelp: 'Adjunta actas o documentos del Comité. No se registran votos individuales.' },
     incidents: { title: 'Incidentes y acciones', eyebrow: 'REPORTE Y SEGUIMIENTO', description: 'Organiza reportes, investigaciones y medidas correctivas sin guardar diagnósticos ni resultados clínicos.', upload: true, accept: '.pdf,.docx,.xlsx,.csv,.jpg,.jpeg,.png', fileHelp: 'Sube evidencia operativa. No incluyas diagnósticos ni información clínica.' },
@@ -42,6 +42,9 @@
   let sstRecords = [];
   let ipercMatrices = [];
   let ipercHazards = [];
+  let ipercMethodology = null;
+  let legalRequirements = [];
+  let legalAssessments = [];
   let selectedIpercMatrixId = null;
   let currentEditingIpercMatrix = null;
   let currentEditingIpercRisk = null;
@@ -347,24 +350,33 @@
     company = await ensureCompany(user);
     if (company) {
       const companyId = encodeURIComponent(company.id);
-      const [employeeRows, taskRows, recordRows, matrixRows, hazardRows] = await Promise.all([
+      const [employeeRows, taskRows, recordRows, matrixRows, hazardRows, methodologyRows, requirementRows, assessmentRows] = await Promise.all([
         restRequest('employees', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
         restRequest('tasks', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
         restRequest('sst_records', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
         restRequest('iperc_matrices', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
-        restRequest('iperc_hazards', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` })
+        restRequest('iperc_hazards', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
+        restRequest('iperc_methodologies', { query: `select=*&company_id=eq.${companyId}&limit=1` }),
+        restRequest('sst_legal_requirements', { query: 'select=*&is_active=eq.true&order=sort_order.asc' }),
+        restRequest('sst_legal_assessments', { query: `select=*&company_id=eq.${companyId}&order=updated_at.desc` })
       ]);
       employees = employeeRows || [];
       tasks = taskRows || [];
       sstRecords = recordRows || [];
       ipercMatrices = matrixRows || [];
       ipercHazards = hazardRows || [];
+      ipercMethodology = methodologyRows?.[0] || null;
+      legalRequirements = requirementRows || [];
+      legalAssessments = assessmentRows || [];
     } else {
       employees = [];
       tasks = [];
       sstRecords = [];
       ipercMatrices = [];
       ipercHazards = [];
+      ipercMethodology = null;
+      legalRequirements = [];
+      legalAssessments = [];
       selectedIpercMatrixId = null;
     }
     showApp();
@@ -637,8 +649,398 @@
     return { label: `Revisión ${dateLabel(matrix.review_date)}`, className: 'current', alert: false };
   }
 
+  function evaluateIpercFormula(formula, probability, severity) {
+    const source = String(formula || '').toUpperCase().replace(/[×]/g, '*').replace(/[÷]/g, '/').replace(/[−–]/g, '-');
+    const tokens = [];
+    let position = 0;
+    while (position < source.length) {
+      const remaining = source.slice(position);
+      if (/^\s*$/.test(remaining)) break;
+      const match = remaining.match(/^\s*(P|S|(?:\d+(?:\.\d+)?|\.\d+)|[()+\-*/])/);
+      if (!match) throw new Error('Usa solo P, S, números, paréntesis y los operadores + − × ÷.');
+      tokens.push(match[1]);
+      position += match[0].length;
+    }
+    if (!tokens.length) throw new Error('Escribe una fórmula, por ejemplo P * S.');
+    let cursor = 0;
+    const parsePrimary = () => {
+      const token = tokens[cursor++];
+      if (token === undefined) throw new Error('Fórmula incompleta.');
+      if (token === '+') return parsePrimary();
+      if (token === '-') return -parsePrimary();
+      if (token === '(') {
+        const value = parseExpression();
+        if (tokens[cursor++] !== ')') throw new Error('Falta cerrar un paréntesis.');
+        return value;
+      }
+      if (token === 'P') return Number(probability);
+      if (token === 'S') return Number(severity);
+      const number = Number(token);
+      if (Number.isFinite(number)) return number;
+      throw new Error('Fórmula inválida.');
+    };
+    const parseProduct = () => {
+      let value = parsePrimary();
+      while (tokens[cursor] === '*' || tokens[cursor] === '/') {
+        const operator = tokens[cursor++];
+        const right = parsePrimary();
+        if (operator === '/' && Math.abs(right) < 1e-12) throw new Error('La fórmula divide entre cero para una categoría.');
+        value = operator === '*' ? value * right : value / right;
+      }
+      return value;
+    };
+    const parseExpression = () => {
+      let value = parseProduct();
+      while (tokens[cursor] === '+' || tokens[cursor] === '-') {
+        const operator = tokens[cursor++];
+        const right = parseProduct();
+        value = operator === '+' ? value + right : value - right;
+      }
+      return value;
+    };
+    const result = parseExpression();
+    if (cursor !== tokens.length) throw new Error('Revisa la posición de los operadores o paréntesis.');
+    if (!Number.isFinite(result) || Math.abs(result) > 1e12) throw new Error('La fórmula produce un resultado fuera del rango permitido.');
+    return result;
+  }
+
+  function methodologyFromRow(row) {
+    if (!row) return null;
+    return {
+      methodology_name: String(row.methodology_name || ''),
+      formula: String(row.formula || ''),
+      probability_min: Number(row.probability_min),
+      probability_max: Number(row.probability_max),
+      severity_min: Number(row.severity_min),
+      severity_max: Number(row.severity_max),
+      probability_scale_notes: String(row.probability_scale_notes || ''),
+      severity_scale_notes: String(row.severity_scale_notes || ''),
+      level_1_label: String(row.level_1_label || ''),
+      level_1_max: Number(row.level_1_max),
+      level_2_label: String(row.level_2_label || ''),
+      level_2_max: Number(row.level_2_max),
+      level_3_label: String(row.level_3_label || ''),
+      level_3_max: Number(row.level_3_max),
+      level_4_label: String(row.level_4_label || ''),
+      revision: Number(row.revision || 1),
+      updated_at: row.updated_at || null
+    };
+  }
+
+  function methodologyFromMatrix(matrix) {
+    if (!matrix?.methodology_snapshot) return null;
+    let snapshot = matrix.methodology_snapshot;
+    if (typeof snapshot === 'string') {
+      try { snapshot = JSON.parse(snapshot); } catch { return null; }
+    }
+    return methodologyFromRow(snapshot);
+  }
+
+  function methodologySnapshot(method) {
+    const normalized = methodologyFromRow(method);
+    return normalized ? { ...normalized, updated_at: method.updated_at || null } : null;
+  }
+
+  function ipercFormulaRange(method) {
+    if (!method || !Number.isInteger(method.probability_min) || !Number.isInteger(method.probability_max) || !Number.isInteger(method.severity_min) || !Number.isInteger(method.severity_max)) {
+      throw new Error('Define valores enteros mínimos y máximos para probabilidad y severidad.');
+    }
+    if (method.probability_min < 0 || method.severity_min < 0 || method.probability_max > 100 || method.severity_max > 100 || method.probability_max <= method.probability_min || method.severity_max <= method.severity_min) {
+      throw new Error('Cada escala debe tener un mínimo menor que el máximo y un rango entre 0 y 100.');
+    }
+    const minValues = [];
+    const maxValues = [];
+    for (let probability = method.probability_min; probability <= method.probability_max; probability += 1) {
+      for (let severity = method.severity_min; severity <= method.severity_max; severity += 1) {
+        const score = evaluateIpercFormula(method.formula, probability, severity);
+        if (score < 0) throw new Error('La fórmula no puede producir niveles negativos.');
+        minValues.push(score);
+        maxValues.push(score);
+      }
+    }
+    return { min: Math.min(...minValues), max: Math.max(...maxValues) };
+  }
+
+  function ipercRiskLevel(score, method) {
+    if (!method || !Number.isFinite(Number(score))) return null;
+    const value = Math.round(Number(score) * 100) / 100;
+    const cutoffs = [method.level_1_max, method.level_2_max, method.level_3_max].map(Number);
+    const labels = [method.level_1_label, method.level_2_label, method.level_3_label, method.level_4_label];
+    const levelIndex = cutoffs.findIndex(cutoff => value <= cutoff);
+    const index = levelIndex < 0 ? 3 : levelIndex;
+    return { score: value, label: labels[index], index };
+  }
+
+  function formatIpercScore(value) {
+    return new Intl.NumberFormat('es-PE', { maximumFractionDigits: 2 }).format(Number(value));
+  }
+
+  function ipercRiskEvaluation(risk, matrix, stage) {
+    const method = methodologyFromMatrix(matrix);
+    if (!method) return null;
+    const probability = risk?.[`${stage}_probability`];
+    const severity = risk?.[`${stage}_severity`];
+    if (probability === null || probability === undefined || probability === '' || severity === null || severity === undefined || severity === '') return null;
+    const p = Number(probability);
+    const s = Number(severity);
+    if (!Number.isInteger(p) || !Number.isInteger(s) || p < method.probability_min || p > method.probability_max || s < method.severity_min || s > method.severity_max) return { error: 'Fuera de escala' };
+    try {
+      const level = ipercRiskLevel(evaluateIpercFormula(method.formula, p, s), method);
+      return level ? { ...level, probability: p, severity: s } : null;
+    } catch { return { error: 'Revisar método' }; }
+  }
+
+  function ipercMethodologyPreview() {
+    const form = $('#iperc-methodology-form');
+    const values = Object.fromEntries(new FormData(form).entries());
+    const method = {
+      methodology_name: values.methodology_name,
+      formula: values.formula,
+      probability_min: Number(values.probability_min), probability_max: Number(values.probability_max),
+      severity_min: Number(values.severity_min), severity_max: Number(values.severity_max),
+      level_1_label: values.level_1_label, level_1_max: Number(values.level_1_max),
+      level_2_label: values.level_2_label, level_2_max: Number(values.level_2_max),
+      level_3_label: values.level_3_label, level_3_max: Number(values.level_3_max),
+      level_4_label: values.level_4_label
+    };
+    if (!method.formula || values.probability_min === '' || values.probability_max === '' || values.severity_min === '' || values.severity_max === '' || values.level_1_max === '' || values.level_2_max === '' || values.level_3_max === '') {
+      $('#iperc-methodology-preview').textContent = 'Completa las escalas, la fórmula y los tres umbrales para validar el método.';
+      $('#iperc-methodology-preview').classList.remove('invalid');
+      return false;
+    }
+    try {
+      const range = ipercFormulaRange(method);
+      const cutoffs = [method.level_1_max, method.level_2_max, method.level_3_max];
+      const validLabels = [method.level_1_label, method.level_2_label, method.level_3_label, method.level_4_label].every(label => String(label || '').trim());
+      const validCutoffs = cutoffs.every(Number.isFinite) && cutoffs.every(value => Math.abs(value * 100 - Math.round(value * 100)) < 1e-8) && cutoffs[0] >= range.min && cutoffs[0] < cutoffs[1] && cutoffs[1] < cutoffs[2] && cutoffs[2] < range.max;
+      if (!validLabels) throw new Error('Asigna un nombre a cada nivel.');
+      if (!validCutoffs) throw new Error(`Los umbrales deben aumentar (máximo 2 decimales), comenzar desde el mínimo ${formatIpercScore(range.min)} y dejar el nivel superior por debajo del máximo ${formatIpercScore(range.max)}.`);
+      $('#iperc-methodology-preview').innerHTML = `<b>Método válido:</b> resultado entre ${escapeHtml(formatIpercScore(range.min))} y ${escapeHtml(formatIpercScore(range.max))}. Bandas: ${escapeHtml(method.level_1_label)} ≤ ${escapeHtml(formatIpercScore(cutoffs[0]) )}; ${escapeHtml(method.level_2_label)} ≤ ${escapeHtml(formatIpercScore(cutoffs[1]))}; ${escapeHtml(method.level_3_label)} ≤ ${escapeHtml(formatIpercScore(cutoffs[2]))}; ${escapeHtml(method.level_4_label)} por encima.`;
+      $('#iperc-methodology-preview').classList.remove('invalid');
+      return true;
+    } catch (error) {
+      $('#iperc-methodology-preview').textContent = error.message;
+      $('#iperc-methodology-preview').classList.add('invalid');
+      return false;
+    }
+  }
+
+  function renderIpercMethodology() {
+    const method = methodologyFromRow(ipercMethodology);
+    const summary = $('#iperc-methodology-summary');
+    const status = $('#iperc-methodology-status');
+    const button = $('#configure-iperc-methodology');
+    if (!method) {
+      status.textContent = 'Sin configurar: los niveles no se calculan hasta que la empresa defina su fórmula y umbrales.';
+      button.textContent = '＋ Configurar método';
+      summary.innerHTML = '<span class="iperc-methodology-unset">Aún no hay una escala activa para esta empresa. Las valoraciones de texto y los registros históricos siguen intactos.</span>';
+      return;
+    }
+    try {
+      const range = ipercFormulaRange(method);
+      status.textContent = `Configurada · revisión ${method.revision} · los cambios se aplican a versiones nuevas.`;
+      button.textContent = 'Editar metodología';
+      summary.innerHTML = `<b>${escapeHtml(method.methodology_name)}</b><span>Fórmula: <code>${escapeHtml(method.formula)}</code></span><span>Probabilidad ${method.probability_min}–${method.probability_max}${method.probability_scale_notes ? ` · ${escapeHtml(method.probability_scale_notes)}` : ''}</span><span>Severidad ${method.severity_min}–${method.severity_max}${method.severity_scale_notes ? ` · ${escapeHtml(method.severity_scale_notes)}` : ''}</span><span>Rango posible ${escapeHtml(formatIpercScore(range.min))}–${escapeHtml(formatIpercScore(range.max))} · ${escapeHtml(method.level_1_label)} / ${escapeHtml(method.level_2_label)} / ${escapeHtml(method.level_3_label)} / ${escapeHtml(method.level_4_label)}</span>`;
+    } catch (error) {
+      status.textContent = 'La metodología guardada necesita revisión.';
+      button.textContent = 'Revisar método';
+      summary.innerHTML = `<span class="iperc-methodology-unset">${escapeHtml(error.message)}</span>`;
+    }
+  }
+
+  function openIpercMethodologyForm() {
+    const form = $('#iperc-methodology-form');
+    form.reset();
+    const method = ipercMethodology;
+    const defaults = method || {};
+    ['methodology_name','probability_min','probability_max','probability_scale_notes','severity_min','severity_max','severity_scale_notes','formula','level_1_label','level_1_max','level_2_label','level_2_max','level_3_label','level_3_max','level_4_label'].forEach(name => {
+      form.elements.namedItem(name).value = defaults[name] ?? '';
+    });
+    $('#iperc-methodology-form-title').textContent = method ? `Editar metodología · revisión ${method.revision}` : 'Configurar metodología IPERC';
+    $('#iperc-methodology-preview').classList.remove('invalid');
+    form.classList.remove('hidden');
+    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function loadIpercMethodologyExample() {
+    const form = $('#iperc-methodology-form');
+    const example = {
+      methodology_name: 'Ejemplo editable 1–5',
+      probability_min: 1, probability_max: 5,
+      probability_scale_notes: 'Ejemplo ilustrativo; definir/validar con la empresa',
+      severity_min: 1, severity_max: 5,
+      severity_scale_notes: 'Ejemplo ilustrativo; definir/validar con la empresa',
+      formula: 'P * S',
+      level_1_label: 'Bajo', level_1_max: 4,
+      level_2_label: 'Moderado', level_2_max: 9,
+      level_3_label: 'Alto', level_3_max: 16,
+      level_4_label: 'Crítico'
+    };
+    Object.entries(example).forEach(([name,value]) => { form.elements.namedItem(name).value = String(value); });
+    ipercMethodologyPreview();
+  }
+
+  function resetIpercMethodologyForm() {
+    const form = $('#iperc-methodology-form');
+    form.reset();
+    form.classList.add('hidden');
+    $('#iperc-methodology-preview').classList.remove('invalid');
+  }
+
+  async function submitIpercMethodology(event) {
+    event.preventDefault();
+    if (!company) { showToast('Completa primero el perfil de tu empresa.', 'error'); return; }
+    if (!ipercMethodologyPreview()) { showToast('Revisa la fórmula y las bandas antes de guardar.', 'error'); return; }
+    const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const payload = {
+      company_id: company.id,
+      methodology_name: values.methodology_name.trim(),
+      formula: values.formula.trim().toUpperCase(),
+      probability_min: Number(values.probability_min), probability_max: Number(values.probability_max),
+      severity_min: Number(values.severity_min), severity_max: Number(values.severity_max),
+      probability_scale_notes: values.probability_scale_notes.trim() || null,
+      severity_scale_notes: values.severity_scale_notes.trim() || null,
+      level_1_label: values.level_1_label.trim(), level_1_max: Number(values.level_1_max),
+      level_2_label: values.level_2_label.trim(), level_2_max: Number(values.level_2_max),
+      level_3_label: values.level_3_label.trim(), level_3_max: Number(values.level_3_max),
+      level_4_label: values.level_4_label.trim(),
+      revision: Number(ipercMethodology?.revision || 0) + 1
+    };
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Guardando…';
+    try {
+      if (ipercMethodology?.id) {
+        const rows = await restRequest('iperc_methodologies', { method: 'PATCH', query: `id=eq.${encodeURIComponent(ipercMethodology.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`, body: payload, prefer: 'return=representation' });
+        if (!rows?.length) throw new Error('No se pudo actualizar la metodología.');
+      } else {
+        const rows = await restRequest('iperc_methodologies', { method: 'POST', query: 'select=*', body: payload, prefer: 'return=representation' });
+        if (!rows?.length) throw new Error('No se pudo guardar la metodología.');
+      }
+      await reloadWorkspaceData();
+      resetIpercMethodologyForm();
+      showToast('Metodología guardada. Las versiones existentes no se recalcularon; crea una versión nueva para aplicar cambios.');
+    } catch (error) { showToast(friendlyError(error), 'error'); }
+    finally { button.disabled = false; button.textContent = oldText; }
+  }
+
+  function legalStatusLabel(status) {
+    return ({ pending: 'Pendiente', compliant: 'Cumple', partial: 'Parcial', non_compliant: 'No cumple', not_applicable: 'No aplica' })[status] || 'Pendiente';
+  }
+
+  function isLegalRequirementApplicable(requirement) {
+    if (requirement?.conditional_rule === 'employees_20_plus') return Number(company?.employee_count || 0) >= 20;
+    return true;
+  }
+
+  function renderLegalCompliance() {
+    const container = $('#legal-requirement-list');
+    if (!container) return;
+    const requirements = [...legalRequirements].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+    const applicable = requirements.filter(isLegalRequirementApplicable);
+    const completedStatuses = ['compliant', 'partial', 'non_compliant'];
+    const getStatus = requirement => {
+      if (!isLegalRequirementApplicable(requirement)) return 'not_applicable';
+      const saved = legalAssessments.find(item => item.requirement_id === requirement.id);
+      return saved?.status || 'pending';
+    };
+    const counts = { compliant: 0, partial: 0, non_compliant: 0, pending: 0, not_applicable: 0 };
+    requirements.forEach(requirement => { counts[getStatus(requirement)] = (counts[getStatus(requirement)] || 0) + 1; });
+    const evaluatedStatuses = [...completedStatuses, 'not_applicable'];
+    const evaluated = applicable.filter(requirement => evaluatedStatuses.includes(getStatus(requirement))).length;
+    const totalApplicable = applicable.length;
+    const overview = totalApplicable === 0 ? 'Sin requisitos cargados' : counts.non_compliant ? 'Hay requisitos marcados “No cumple”' : counts.partial ? 'Hay requisitos con evaluación parcial' : counts.pending ? 'La revisión está incompleta' : 'Todos los requisitos base aplicables están marcados como revisados';
+    $('#legal-compliance-summary').innerHTML = `<div class="legal-summary-state"><small>Estado de la autoevaluación</small><b>${escapeHtml(overview)}</b><span>${evaluated} de ${totalApplicable} requisitos aplicables evaluados · ${counts.not_applicable} condicionales no aplicables según el perfil</span></div><div class="legal-summary-count"><small>Cumple</small><b>${counts.compliant}</b></div><div class="legal-summary-count partial"><small>Parcial</small><b>${counts.partial}</b></div><div class="legal-summary-count danger"><small>No cumple</small><b>${counts.non_compliant}</b></div><div class="legal-summary-count muted"><small>Pendiente</small><b>${counts.pending}</b></div>`;
+    if (!requirements.length) {
+      $('#legal-catalog-meta').textContent = 'No se pudo cargar el catálogo base. Verifica que la migración 0005 esté aplicada.';
+      container.innerHTML = '<div class="empty-state"><b>Catálogo no disponible</b><p>La matriz legal aparecerá cuando esté habilitada la migración de autoevaluación.</p></div>';
+      return;
+    }
+    const reviewedDates = [...new Set(requirements.map(requirement => requirement.reviewed_on).filter(Boolean))];
+    const reviewedLabel = reviewedDates.length ? new Intl.DateTimeFormat('es-PE', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${reviewedDates.sort().at(-1)}T00:00:00`)) : 'sin fecha';
+    $('#legal-catalog-meta').textContent = `Catálogo inicial de SST general · ${requirements.length} criterios · revisión de fuentes: ${reviewedLabel} · rubro del perfil: ${company?.sector || 'sin especificar'}`;
+    container.innerHTML = requirements.map(requirement => {
+      const assessment = legalAssessments.find(item => item.requirement_id === requirement.id);
+      const applies = isLegalRequirementApplicable(requirement);
+      const autoStatus = !applies ? 'not_applicable' : null;
+      const status = autoStatus || assessment?.status || 'pending';
+      const applicabilityLabel = requirement.conditional_rule === 'employees_20_plus'
+        ? (applies ? 'Condicional · aplica según el perfil (20+ trabajadores)' : `No aplica según el perfil actual (${Number(company?.employee_count || 0)} trabajadores); revisar si cambia`)
+        : 'Criterio general · verificar su aplicación en la empresa';
+      const statusOptions = [['pending','Pendiente'],['compliant','Cumple'],['partial','Parcial'],['non_compliant','No cumple'],['not_applicable','No aplica']]
+        .map(([value,label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${label}</option>`).join('');
+      const reviewedAt = assessment?.reviewed_at || '';
+      const reviewerDefault = assessment?.reviewed_by || currentUser?.user_metadata?.full_name || currentUser?.email || '';
+      const fieldPrefix = `legal-${escapeHtml(requirement.id)}`;
+      return `<article class="legal-requirement-card" data-legal-card="${escapeHtml(requirement.id)}">
+        <div class="legal-requirement-heading"><div><span class="legal-applicability ${applies ? '' : 'not-applicable'}">${escapeHtml(applicabilityLabel)}</span><h4>${escapeHtml(requirement.title)}</h4><p>${escapeHtml(requirement.requirement_text)}</p><a class="legal-source-link" href="${escapeHtml(requirement.source_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(requirement.legal_reference)} · Ver fuente ↗</a></div><span class="legal-status-chip ${escapeHtml(status)}">${escapeHtml(legalStatusLabel(status))}</span></div>
+        <div class="legal-requirement-guidance"><b>Evidencia orientativa:</b> ${escapeHtml(requirement.evidence_guidance)}</div>
+        <div class="legal-assessment-fields">
+          <div class="field"><label for="${fieldPrefix}-status">Estado de revisión</label><select id="${fieldPrefix}-status" data-legal-field="status" ${!applies ? 'disabled' : ''}>${statusOptions}</select></div>
+          <div class="field"><label for="${fieldPrefix}-reviewed-at">Fecha de revisión</label><input id="${fieldPrefix}-reviewed-at" data-legal-field="reviewed_at" type="date" value="${escapeHtml(reviewedAt)}" ${!applies ? 'disabled' : ''}></div>
+          <div class="field"><label for="${fieldPrefix}-reviewer">Revisado por</label><input id="${fieldPrefix}-reviewer" data-legal-field="reviewed_by" maxlength="160" value="${escapeHtml(reviewerDefault)}" placeholder="Nombre / rol" ${!applies ? 'disabled' : ''}></div>
+          <div class="field full-field"><label for="${fieldPrefix}-evidence-summary">Resumen de evidencia observada</label><textarea id="${fieldPrefix}-evidence-summary" data-legal-field="evidence_summary" rows="2" maxlength="3000" placeholder="Describe brevemente qué se revisó y qué encontraste; no ingreses datos personales de salud." ${!applies ? 'disabled' : ''}>${escapeHtml(assessment?.evidence_summary || '')}</textarea></div>
+          <div class="field full-field"><label for="${fieldPrefix}-evidence-reference">Referencia o ubicación de la evidencia (sin adjuntar)</label><input id="${fieldPrefix}-evidence-reference" data-legal-field="evidence_reference" maxlength="500" value="${escapeHtml(assessment?.evidence_reference || '')}" placeholder="Ej.: carpeta SST / código del documento / URL interna" ${!applies ? 'disabled' : ''}></div>
+          <div class="field full-field"><label for="${fieldPrefix}-review-notes">Notas / justificación (obligatoria para “No aplica”)</label><textarea id="${fieldPrefix}-review-notes" data-legal-field="review_notes" rows="2" maxlength="2000" placeholder="Supuestos, acciones pendientes o razón de no aplicabilidad." ${!applies ? 'disabled' : ''}>${escapeHtml(assessment?.review_notes || '')}</textarea></div>
+        </div>
+        <div class="legal-requirement-footer"><small>${assessment?.updated_at ? `Actualizado ${escapeHtml(dateLabel(String(assessment.updated_at).slice(0,10)))}` : 'Aún no hay evaluación guardada'}</small><button type="button" class="button secondary small-button" data-legal-save="${escapeHtml(requirement.id)}" ${!applies ? 'disabled' : ''}>Guardar evaluación</button></div>
+      </article>`;
+    }).join('');
+  }
+
+  async function saveLegalAssessment(button) {
+    const card = button.closest('[data-legal-card]');
+    const requirementId = card?.dataset.legalCard;
+    const requirement = legalRequirements.find(item => item.id === requirementId);
+    if (!company || !requirement || !isLegalRequirementApplicable(requirement)) return;
+    const value = key => card.querySelector(`[data-legal-field="${key}"]`)?.value || '';
+    const status = value('status') || 'pending';
+    const evidenceSummary = value('evidence_summary').trim();
+    const evidenceReference = value('evidence_reference').trim();
+    const reviewNotes = value('review_notes').trim();
+    if (['compliant','partial','non_compliant'].includes(status) && !evidenceSummary && !evidenceReference) {
+      showToast('Para guardar una evaluación, añade el resumen o la referencia de evidencia observada.', 'error');
+      return;
+    }
+    if (status === 'not_applicable' && !reviewNotes) {
+      showToast('Explica por qué este requisito no aplica a la empresa.', 'error');
+      return;
+    }
+    const payload = {
+      company_id: company.id,
+      requirement_id: requirementId,
+      catalog_version: requirement.catalog_version,
+      requirement_snapshot: { legal_reference: requirement.legal_reference, title: requirement.title, requirement_text: requirement.requirement_text, source_url: requirement.source_url, reviewed_on: requirement.reviewed_on },
+      status,
+      evidence_summary: evidenceSummary || null,
+      evidence_reference: evidenceReference || null,
+      review_notes: reviewNotes || null,
+      reviewed_by: value('reviewed_by').trim() || null,
+      reviewed_at: value('reviewed_at') || (status === 'pending' ? null : todayISO())
+    };
+    const existing = legalAssessments.find(item => item.requirement_id === requirementId);
+    const oldLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Guardando…';
+    try {
+      if (existing) {
+        const rows = await restRequest('sst_legal_assessments', { method: 'PATCH', query: `id=eq.${encodeURIComponent(existing.id)}&company_id=eq.${encodeURIComponent(company.id)}&select=*`, body: payload, prefer: 'return=representation' });
+        if (!rows?.length) throw new Error('No se pudo actualizar la evaluación.');
+      } else {
+        const rows = await restRequest('sst_legal_assessments', { method: 'POST', query: 'select=*', body: payload, prefer: 'return=representation' });
+        if (!rows?.length) throw new Error('No se pudo guardar la evaluación.');
+      }
+      await reloadWorkspaceData();
+      showToast('Evaluación guardada como autoevaluación con evidencia referenciada.');
+    } catch (error) { showToast(friendlyError(error), 'error'); }
+    finally { button.disabled = false; button.textContent = oldLabel; }
+  }
+
   function renderIpercWorkbench() {
     if (!$('#iperc-workbench')) return;
+    renderIpercMethodology();
+    renderLegalCompliance();
     const latestVersions = latestIpercVersions();
     const latestIds = new Set(latestVersions.map(matrix => matrix.id));
     const openHazards = ipercHazards.filter(item => latestIds.has(item.matrix_id) && item.status !== 'done');
@@ -676,6 +1078,62 @@
     renderIpercRisks();
   }
 
+  function configureIpercRiskScoringFields(matrix) {
+    const method = methodologyFromMatrix(matrix);
+    const fieldset = $('#iperc-risk-score-fields');
+    const unavailable = $('#iperc-risk-score-unavailable');
+    fieldset.classList.toggle('hidden', !method);
+    unavailable.classList.toggle('hidden', Boolean(method));
+    if (!method) {
+      ['initial_probability','initial_severity','residual_probability','residual_severity'].forEach(name => {
+        const input = $('#iperc-risk-form').elements.namedItem(name);
+        input.required = false;
+        input.removeAttribute('min');
+        input.removeAttribute('max');
+      });
+      unavailable.textContent = ipercMethodology
+        ? 'Esta versión no tiene una metodología guardada. Configura el método y crea una nueva versión de la matriz para aplicarlo; las valoraciones de texto anteriores no se convierten.'
+        : 'Para calcular niveles, configura la metodología de la empresa y crea una nueva versión de esta matriz. Las valoraciones históricas en texto se conservan y no se convierten automáticamente.';
+      return;
+    }
+    $('#iperc-risk-score-fields legend').textContent = `Cálculo automático · ${method.methodology_name} · ${method.formula}`;
+    [['initial_probability',method.probability_min,method.probability_max],['residual_probability',method.probability_min,method.probability_max],['initial_severity',method.severity_min,method.severity_max],['residual_severity',method.severity_min,method.severity_max]].forEach(([name,min,max]) => {
+      const input = $('#iperc-risk-form').elements.namedItem(name);
+      input.min = String(min);
+      input.max = String(max);
+      input.required = true;
+    });
+    updateIpercCalculationPreview();
+  }
+
+  function updateIpercCalculationPreview() {
+    const matrix = ipercMatrices.find(item => item.id === selectedIpercMatrixId);
+    const method = methodologyFromMatrix(matrix);
+    const preview = $('#iperc-calculation-preview');
+    if (!method || !preview) return;
+    const form = $('#iperc-risk-form');
+    const read = name => form.elements.namedItem(name).value;
+    const calc = (prefix, stage) => {
+      const p = read(`${prefix}_probability`);
+      const s = read(`${prefix}_severity`);
+      if (p === '' || s === '') return `${stage}: completa probabilidad y severidad`;
+      const value = ipercRiskEvaluation({ [`${prefix}_probability`]: p, [`${prefix}_severity`]: s }, matrix, prefix);
+      if (!value) return `${stage}: pendiente`;
+      if (value.error) return `${stage}: ${value.error}`;
+      return `${stage}: ${formatIpercScore(value.score)} · ${value.label}`;
+    };
+    const initial = calc('initial','Inicial');
+    const residual = calc('residual','Residual');
+    preview.textContent = `${initial}  |  ${residual}`;
+  }
+
+  function ipercEvaluationMarkup(label, evaluation, legacyText) {
+    if (evaluation?.error) return `<span class="iperc-risk-evaluation"><small>${escapeHtml(label)}</small><b class="iperc-risk-invalid">${escapeHtml(evaluation.error)}</b></span>`;
+    if (evaluation) return `<span class="iperc-risk-evaluation"><small>${escapeHtml(label)} · ${escapeHtml(formatIpercScore(evaluation.score))}</small><b class="iperc-risk-level level-${evaluation.index}">${escapeHtml(evaluation.label)}</b></span>`;
+    if (legacyText) return `<span class="iperc-risk-evaluation"><small>${escapeHtml(label)} · texto conservado</small><b>${escapeHtml(legacyText)}</b></span>`;
+    return `<span class="iperc-risk-evaluation"><small>${escapeHtml(label)}</small><b class="muted-cell">Sin factores</b></span>`;
+  }
+
   function renderIpercRisks() {
     const section = $('#iperc-risk-section');
     const matrix = ipercMatrices.find(item => item.id === selectedIpercMatrixId);
@@ -686,13 +1144,17 @@
     }
     section.classList.remove('hidden');
     const latest = isLatestIpercVersion(matrix);
+    const method = methodologyFromMatrix(matrix);
     const riskRows = ipercHazards.filter(item => item.matrix_id === matrix.id).sort((a, b) => (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31') || String(b.created_at || '').localeCompare(String(a.created_at || '')));
     $('#iperc-selected-title').textContent = matrix.title;
     $('#iperc-selected-meta').textContent = `Versión ${matrix.version_number}${latest ? ' · Última versión' : ' · Historial de solo lectura'}${matrix.site ? ` · ${matrix.site}` : ''}${matrix.process ? ` · ${matrix.process}` : ''}${matrix.review_date ? ` · Revisión ${dateLabel(matrix.review_date)}` : ''}`;
     $('#create-iperc-risk').classList.toggle('hidden', !latest || !company);
-    $('#iperc-scale-note').textContent = latest
-      ? `Escala de esta matriz: ${matrix.methodology_notes || 'No especificada; registra las valoraciones con la metodología aprobada por tu empresa.'} El sistema no calcula ni declara niveles de riesgo.`
-      : 'Esta versión histórica se conserva en modo de solo lectura. Crea una nueva versión para continuar actualizando sus peligros y controles.';
+    configureIpercRiskScoringFields(matrix);
+    $('#iperc-scale-note').textContent = method
+      ? `Nivel inicial y residual calculados con “${method.methodology_name}” (fórmula ${method.formula}) y las bandas configuradas por tu empresa. El cálculo no valida por sí mismo que el método sea adecuado.`
+      : ipercMethodology
+        ? 'La empresa ya tiene un método configurado. Esta versión no lo contiene: crea una nueva versión para fijarlo sin alterar el historial.'
+        : 'Configura la fórmula, las escalas y los umbrales de tu empresa. Los valores históricos en texto se conservan y no se convierten automáticamente.';
     const tbody = $('#iperc-risk-table-body');
     const table = tbody.closest('.table-scroll');
     $('#iperc-risk-empty').classList.toggle('hidden', riskRows.length > 0);
@@ -702,10 +1164,12 @@
     $('#iperc-empty-risk').classList.toggle('hidden', !latest);
     tbody.innerHTML = riskRows.map(risk => {
       const overdue = risk.status !== 'done' && risk.due_date && risk.due_date < todayISO();
-      const ratings = [risk.initial_rating ? `Inicial: ${risk.initial_rating}` : '', risk.residual_rating ? `Residual: ${risk.residual_rating}` : ''].filter(Boolean).join(' · ') || 'Sin valoración';
+      const initialEval = ipercRiskEvaluation(risk, matrix, 'initial');
+      const residualEval = ipercRiskEvaluation(risk, matrix, 'residual');
+      const ratings = `${ipercEvaluationMarkup('Inicial', initialEval, risk.initial_rating)}${ipercEvaluationMarkup('Residual', residualEval, risk.residual_rating)}`;
       const controls = [risk.existing_controls ? `Existentes: ${risk.existing_controls}` : '', risk.additional_controls ? `Medidas: ${risk.additional_controls}` : ''].filter(Boolean).join(' | ') || 'Sin controles descritos';
       const actions = latest ? `<div class="row-actions"><button type="button" class="row-action" data-iperc-risk-edit="${escapeHtml(risk.id)}" title="Editar riesgo" aria-label="Editar riesgo">✎</button><button type="button" class="row-action danger" data-iperc-risk-delete="${escapeHtml(risk.id)}" title="Eliminar riesgo" aria-label="Eliminar riesgo">×</button></div>` : '<span class="iperc-readonly-label">Solo lectura</span>';
-      return `<tr><td><b>${escapeHtml(risk.job_position)}</b><small>${escapeHtml(risk.activity || 'Sin actividad')}</small></td><td><b>${escapeHtml(risk.hazard)}</b><small>${escapeHtml(risk.risk_event || risk.consequences || 'Sin detalle')}</small></td><td><span class="iperc-table-notes">${escapeHtml(controls)}</span></td><td>${escapeHtml(ratings)}</td><td>${escapeHtml(risk.responsible || '—')}<small class="${overdue ? 'overdue-text' : ''}">${escapeHtml(dateLabel(risk.due_date))}</small></td><td><span class="module-status ${escapeHtml(risk.status || 'pending')} ${overdue ? 'iperc-overdue-status' : ''}">${escapeHtml(moduleStatusLabel(risk.status))}</span></td><td>${actions}</td></tr>`;
+      return `<tr><td><b>${escapeHtml(risk.job_position)}</b><small>${escapeHtml(risk.activity || 'Sin actividad')}</small></td><td><b>${escapeHtml(risk.hazard)}</b><small>${escapeHtml(risk.risk_event || risk.consequences || 'Sin detalle')}</small></td><td><span class="iperc-table-notes">${escapeHtml(controls)}</span></td><td class="iperc-rating-cell">${ratings}</td><td>${escapeHtml(risk.responsible || '—')}<small class="${overdue ? 'overdue-text' : ''}">${escapeHtml(dateLabel(risk.due_date))}</small></td><td><span class="module-status ${escapeHtml(risk.status || 'pending')} ${overdue ? 'iperc-overdue-status' : ''}">${escapeHtml(moduleStatusLabel(risk.status))}</span></td><td>${actions}</td></tr>`;
     }).join('');
   }
 
@@ -782,11 +1246,16 @@
     }
     if (file && !validateIpercFile(file)) return;
     if (isNew && !file) { showToast('Adjunta el archivo de esta versión IPERC.', 'error'); $('#iperc-matrix-file').focus(); return; }
+    const sourceForSnapshot = values.source_matrix_id ? ipercMatrices.find(item => item.id === values.source_matrix_id) : null;
+    const selectedMethodSnapshot = isNew
+      ? (methodologySnapshot(ipercMethodology) || methodologyFromMatrix(sourceForSnapshot))
+      : (existing?.methodology_snapshot || null);
     const payload = {
       company_id: company.id,
       matrix_group_id: values.matrix_group_id || newUuid(),
       version_number: Number(values.version_number || 1),
       source_matrix_id: values.source_matrix_id || existing?.source_matrix_id || null,
+      methodology_snapshot: selectedMethodSnapshot,
       title: values.title.trim(),
       site: values.site.trim() || null,
       process: values.process.trim() || null,
@@ -845,6 +1314,7 @@
     form.classList.add('hidden');
     currentEditingIpercRisk = null;
     $('#iperc-risk-form-title').textContent = 'Añadir riesgo';
+    configureIpercRiskScoringFields(ipercMatrices.find(item => item.id === selectedIpercMatrixId));
   }
 
   function openIpercRiskForm(risk = null) {
@@ -854,11 +1324,13 @@
     const form = $('#iperc-risk-form');
     form.elements.namedItem('matrix_id').value = matrix.id;
     currentEditingIpercRisk = risk;
+    configureIpercRiskScoringFields(matrix);
     if (risk) {
       form.elements.namedItem('id').value = risk.id;
-      ['job_position','activity','hazard','risk_event','consequences','existing_controls','initial_rating','additional_controls','residual_rating','responsible','due_date','status'].forEach(name => { form.elements.namedItem(name).value = risk[name] ?? ''; });
+      ['job_position','activity','hazard','risk_event','consequences','existing_controls','initial_rating','initial_probability','initial_severity','additional_controls','residual_rating','residual_probability','residual_severity','responsible','due_date','status'].forEach(name => { form.elements.namedItem(name).value = risk[name] ?? ''; });
       $('#iperc-risk-form-title').textContent = 'Editar peligro y controles';
     }
+    updateIpercCalculationPreview();
     form.classList.remove('hidden');
     form.scrollIntoView({ behavior: 'smooth', block: 'center' });
     $('#iperc-risk-position').focus();
@@ -870,9 +1342,30 @@
     const values = Object.fromEntries(new FormData(form).entries());
     const matrix = ipercMatrices.find(item => item.id === values.matrix_id);
     if (!matrix || !isLatestIpercVersion(matrix)) { showToast('Crea o selecciona la última versión de la matriz para actualizar los riesgos.', 'error'); return; }
+    const method = methodologyFromMatrix(matrix);
+    const factorValue = name => values[name] === '' || values[name] === undefined ? null : Number(values[name]);
+    const factors = {
+      initial_probability: factorValue('initial_probability'),
+      initial_severity: factorValue('initial_severity'),
+      residual_probability: factorValue('residual_probability'),
+      residual_severity: factorValue('residual_severity')
+    };
+    if (method) {
+      const valid = factors.initial_probability !== null && factors.initial_severity !== null && factors.residual_probability !== null && factors.residual_severity !== null
+        && factors.initial_probability >= method.probability_min && factors.initial_probability <= method.probability_max
+        && factors.residual_probability >= method.probability_min && factors.residual_probability <= method.probability_max
+        && factors.initial_severity >= method.severity_min && factors.initial_severity <= method.severity_max
+        && factors.residual_severity >= method.severity_min && factors.residual_severity <= method.severity_max;
+      if (!valid) { showToast('Completa los cuatro factores dentro de la escala configurada.', 'error'); return; }
+      try {
+        evaluateIpercFormula(method.formula, factors.initial_probability, factors.initial_severity);
+        evaluateIpercFormula(method.formula, factors.residual_probability, factors.residual_severity);
+      } catch (error) { showToast(`No se puede calcular: ${error.message}`, 'error'); return; }
+    }
     const payload = {
       company_id: company.id,
       matrix_id: matrix.id,
+      ...factors,
       job_position: values.job_position.trim(),
       activity: values.activity.trim() || null,
       hazard: values.hazard.trim(),
@@ -933,9 +1426,13 @@
   function exportIpercRisksCsv() {
     const matrix = ipercMatrices.find(item => item.id === selectedIpercMatrixId);
     if (!matrix) { showToast('Selecciona una matriz IPERC primero.', 'error'); return; }
-    const headers = ['Matriz','Version','Sede','Proceso','Puesto','Actividad','Peligro','Evento de riesgo','Consecuencias','Controles existentes','Valoracion inicial - escala propia','Medidas adicionales','Valoracion residual - escala propia','Responsable','Fecha de seguimiento','Estado'];
+    const headers = ['Matriz','Version','Sede','Proceso','Puesto','Actividad','Peligro','Evento de riesgo','Consecuencias','Controles existentes','Probabilidad inicial','Severidad inicial','Puntaje inicial calculado','Nivel inicial calculado','Nota inicial conservada','Medidas adicionales','Probabilidad residual','Severidad residual','Puntaje residual calculado','Nivel residual calculado','Nota residual conservada','Responsable','Fecha de seguimiento','Estado'];
     const risks = ipercHazards.filter(item => item.matrix_id === matrix.id);
-    const rows = risks.map(item => [matrix.title, matrix.version_number, matrix.site, matrix.process, item.job_position, item.activity, item.hazard, item.risk_event, item.consequences, item.existing_controls, item.initial_rating, item.additional_controls, item.residual_rating, item.responsible, item.due_date, moduleStatusLabel(item.status)]);
+    const rows = risks.map(item => {
+      const initial = ipercRiskEvaluation(item, matrix, 'initial');
+      const residual = ipercRiskEvaluation(item, matrix, 'residual');
+      return [matrix.title, matrix.version_number, matrix.site, matrix.process, item.job_position, item.activity, item.hazard, item.risk_event, item.consequences, item.existing_controls, item.initial_probability, item.initial_severity, initial && !initial.error ? initial.score : '', initial && !initial.error ? initial.label : '', item.initial_rating, item.additional_controls, item.residual_probability, item.residual_severity, residual && !residual.error ? residual.score : '', residual && !residual.error ? residual.label : '', item.residual_rating, item.responsible, item.due_date, moduleStatusLabel(item.status)];
+    });
     const csvCell = value => {
       let text = String(value ?? '').replace(/\r?\n/g, ' ');
       if (/^[=+\-@]/.test(text)) text = `'${text}`;
@@ -1432,7 +1929,7 @@
     try { if (session?.access_token) await authRequest('logout', { token: session.access_token }); }
     catch { /* Clear the local session even if the remote session already expired. */ }
     saveSession(null);
-    currentUser = null; company = null; employees = []; tasks = []; sstRecords = []; ipercMatrices = []; ipercHazards = []; selectedIpercMatrixId = null;
+    currentUser = null; company = null; employees = []; tasks = []; sstRecords = []; ipercMatrices = []; ipercHazards = []; ipercMethodology = null; legalRequirements = []; legalAssessments = []; selectedIpercMatrixId = null;
     setAuthTab('login');
     showAuth();
   }
@@ -1605,18 +2102,24 @@
   async function reloadWorkspaceData() {
     if (!company) return;
     const companyId = encodeURIComponent(company.id);
-    const [employeeRows, taskRows, recordRows, matrixRows, hazardRows] = await Promise.all([
+    const [employeeRows, taskRows, recordRows, matrixRows, hazardRows, methodologyRows, requirementRows, assessmentRows] = await Promise.all([
       restRequest('employees', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
       restRequest('tasks', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
       restRequest('sst_records', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
       restRequest('iperc_matrices', { query: `select=*&company_id=eq.${companyId}&order=created_at.desc` }),
-      restRequest('iperc_hazards', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` })
+      restRequest('iperc_hazards', { query: `select=*&company_id=eq.${companyId}&order=due_date.asc.nullslast,created_at.desc` }),
+      restRequest('iperc_methodologies', { query: `select=*&company_id=eq.${companyId}&limit=1` }),
+      restRequest('sst_legal_requirements', { query: 'select=*&is_active=eq.true&order=sort_order.asc' }),
+      restRequest('sst_legal_assessments', { query: `select=*&company_id=eq.${companyId}&order=updated_at.desc` })
     ]);
     employees = employeeRows || [];
     tasks = taskRows || [];
     sstRecords = recordRows || [];
     ipercMatrices = matrixRows || [];
     ipercHazards = hazardRows || [];
+    ipercMethodology = methodologyRows?.[0] || null;
+    legalRequirements = requirementRows || [];
+    legalAssessments = assessmentRows || [];
     renderAll();
   }
 
@@ -1642,6 +2145,17 @@
     $('#record-form').addEventListener('submit', submitRecord);
     $('#iperc-matrix-form').addEventListener('submit', submitIpercMatrix);
     $('#iperc-risk-form').addEventListener('submit', submitIpercRisk);
+    $('#iperc-methodology-form').addEventListener('submit', submitIpercMethodology);
+    $('#iperc-methodology-form').addEventListener('input', ipercMethodologyPreview);
+    $('#iperc-risk-form').addEventListener('input', event => { if (event.target.matches('[data-risk-factor]')) updateIpercCalculationPreview(); });
+    $('#configure-iperc-methodology').addEventListener('click', openIpercMethodologyForm);
+    $('#load-iperc-methodology-example').addEventListener('click', loadIpercMethodologyExample);
+    $('#cancel-iperc-methodology').addEventListener('click', resetIpercMethodologyForm);
+    $('#cancel-iperc-methodology-text').addEventListener('click', resetIpercMethodologyForm);
+    $('#legal-requirement-list').addEventListener('click', event => {
+      const save = event.target.closest('[data-legal-save]');
+      if (save) saveLegalAssessment(save);
+    });
     $('#logout-button').addEventListener('click', logout);
 
     $$('[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));

@@ -188,6 +188,34 @@
         <div id="module-privacy-note" class="module-privacy-note hidden"></div>
         <div class="module-stat-row"><div class="module-stat"><small>Registros del módulo</small><b id="module-record-total">0</b></div><div class="module-stat"><small>Pendientes</small><b id="module-record-open">0</b></div><div class="module-stat"><small>Vencidos</small><b id="module-record-overdue">0</b></div><span id="module-action-hint">Adjunta documentos para mantener la evidencia junto al registro.</span></div>
         <div id="iperc-workbench" class="iperc-workbench hidden">
+          <section class="panel iperc-methodology-panel">
+            <div class="panel-heading"><div><span class="panel-kicker">CÁLCULO DE RIESGOS</span><h3>Metodología de tu empresa</h3><p id="iperc-methodology-status" class="iperc-selected-meta">Configura la escala, fórmula y bandas antes de calcular niveles.</p></div><button id="configure-iperc-methodology" type="button" class="button secondary">＋ Configurar método</button></div>
+            <div id="iperc-methodology-summary" class="iperc-methodology-summary"></div>
+            <form id="iperc-methodology-form" class="iperc-form hidden">
+              <div class="form-panel-heading"><div><h3 id="iperc-methodology-form-title">Configurar metodología IPERC</h3><p>Los cálculos se guardan en cada versión; cambiar el método no recalcula el historial.</p></div><button id="cancel-iperc-methodology" type="button" class="icon-button" aria-label="Cerrar configuración">×</button></div>
+              <button id="load-iperc-methodology-example" type="button" class="button secondary small-button">Cargar ejemplo editable 1–5 · P × S</button>
+              <div class="form-grid compact-grid">
+                <div class="field full-field"><label for="iperc-methodology-name">Nombre de la metodología *</label><input id="iperc-methodology-name" name="methodology_name" required maxlength="120" placeholder="Ej.: Matriz IPERC corporativa"></div>
+                <div class="field"><label for="iperc-probability-min">Probabilidad · valor mínimo *</label><input id="iperc-probability-min" name="probability_min" type="number" min="0" max="99" step="1" required></div>
+                <div class="field"><label for="iperc-probability-max">Probabilidad · valor máximo *</label><input id="iperc-probability-max" name="probability_max" type="number" min="1" max="100" step="1" required></div>
+                <div class="field full-field"><label for="iperc-probability-notes">Significado de categorías de probabilidad (opcional)</label><input id="iperc-probability-notes" name="probability_scale_notes" maxlength="500" placeholder="Describe qué significa cada índice según tu empresa"></div>
+                <div class="field"><label for="iperc-severity-min">Severidad · valor mínimo *</label><input id="iperc-severity-min" name="severity_min" type="number" min="0" max="99" step="1" required></div>
+                <div class="field"><label for="iperc-severity-max">Severidad · valor máximo *</label><input id="iperc-severity-max" name="severity_max" type="number" min="1" max="100" step="1" required></div>
+                <div class="field full-field"><label for="iperc-severity-notes">Significado de categorías de severidad (opcional)</label><input id="iperc-severity-notes" name="severity_scale_notes" maxlength="500" placeholder="Describe qué significa cada índice según tu empresa"></div>
+                <div class="field full-field"><label for="iperc-risk-formula">Fórmula de cálculo *</label><input id="iperc-risk-formula" name="formula" required maxlength="80" placeholder="Ej.: P * S"><small>Usa P para probabilidad y S para severidad; operadores permitidos: +, −, ×, ÷ y paréntesis. Ejemplos: P * S o P + S.</small></div>
+                <div class="field"><label for="iperc-level-1-label">Nombre nivel 1 *</label><input id="iperc-level-1-label" name="level_1_label" required maxlength="40" placeholder="Ej.: Bajo"></div>
+                <div class="field"><label for="iperc-level-1-max">Hasta puntaje *</label><input id="iperc-level-1-max" name="level_1_max" type="number" min="0" step="0.01" required></div>
+                <div class="field"><label for="iperc-level-2-label">Nombre nivel 2 *</label><input id="iperc-level-2-label" name="level_2_label" required maxlength="40" placeholder="Ej.: Moderado"></div>
+                <div class="field"><label for="iperc-level-2-max">Hasta puntaje *</label><input id="iperc-level-2-max" name="level_2_max" type="number" min="0" step="0.01" required></div>
+                <div class="field"><label for="iperc-level-3-label">Nombre nivel 3 *</label><input id="iperc-level-3-label" name="level_3_label" required maxlength="40" placeholder="Ej.: Alto"></div>
+                <div class="field"><label for="iperc-level-3-max">Hasta puntaje *</label><input id="iperc-level-3-max" name="level_3_max" type="number" min="0" step="0.01" required></div>
+                <div class="field"><label for="iperc-level-4-label">Nombre nivel 4 y superior *</label><input id="iperc-level-4-label" name="level_4_label" required maxlength="40" placeholder="Ej.: Crítico"></div>
+                <div id="iperc-methodology-preview" class="iperc-methodology-preview full-field">Completa la escala, fórmula y umbrales para validar el método.</div>
+              </div>
+              <div class="form-actions"><button id="cancel-iperc-methodology-text" type="button" class="button secondary">Cancelar</button><button class="button primary" type="submit">Guardar metodología</button></div>
+            </form>
+            <div class="iperc-methodology-footnote">La empresa define la metodología. Nexo calcula el resultado matemático configurado; no valida que la metodología sea adecuada ni sustituye la revisión del responsable de SST.</div>
+          </section>
           <div class="iperc-summary-grid">
             <article class="iperc-summary-card"><small>Matrices / versiones</small><b id="iperc-matrix-count">0</b><span>Historial conservado</span></article>
             <article class="iperc-summary-card"><small>Revisión vencida o próxima</small><b id="iperc-review-alert-count">0</b><span>Próximos 30 días</span></article>
@@ -215,7 +243,7 @@
           </section>
           <section id="iperc-risk-section" class="panel iperc-risk-panel hidden">
             <div class="panel-heading"><div><span class="panel-kicker">PELIGROS, RIESGOS Y CONTROLES</span><h3 id="iperc-selected-title">Selecciona una matriz</h3><p id="iperc-selected-meta" class="iperc-selected-meta"></p></div><div class="iperc-heading-actions"><button id="export-iperc-risks" type="button" class="button secondary">Descargar CSV</button><button id="create-iperc-risk" type="button" class="button primary">＋ Añadir riesgo</button></div></div>
-            <div id="iperc-scale-note" class="iperc-scale-note">Usa la escala y metodología aprobadas por tu empresa. El sistema conserva las valoraciones como texto y no determina cumplimiento legal ni nivel de riesgo por su cuenta.</div>
+            <div id="iperc-scale-note" class="iperc-scale-note">El nivel calculado depende de la metodología y los factores que configure la empresa; no es un dictamen técnico ni una certificación legal.</div>
             <form id="iperc-risk-form" class="iperc-form hidden">
               <div class="form-panel-heading"><div><h3 id="iperc-risk-form-title">Añadir riesgo</h3><p>Registra peligro y controles para un puesto y actividad.</p></div><button id="cancel-iperc-risk" type="button" class="icon-button" aria-label="Cerrar formulario">×</button></div>
               <input type="hidden" name="id"><input type="hidden" name="matrix_id">
@@ -226,8 +254,10 @@
                 <div class="field"><label for="iperc-risk-event">Riesgo / evento</label><input id="iperc-risk-event" name="risk_event" placeholder="Evento potencial"></div>
                 <div class="field full-field"><label for="iperc-risk-consequences">Consecuencias posibles</label><textarea id="iperc-risk-consequences" name="consequences" rows="2"></textarea></div>
                 <div class="field full-field"><label for="iperc-risk-existing-controls">Controles existentes</label><textarea id="iperc-risk-existing-controls" name="existing_controls" rows="2"></textarea></div>
-                <div class="field"><label for="iperc-risk-initial-rating">Valoración inicial (escala propia)</label><input id="iperc-risk-initial-rating" name="initial_rating" placeholder="Según metodología de la empresa"></div>
-                <div class="field"><label for="iperc-risk-residual-rating">Valoración residual (escala propia)</label><input id="iperc-risk-residual-rating" name="residual_rating" placeholder="Según metodología de la empresa"></div>
+                <fieldset id="iperc-risk-score-fields" class="iperc-score-fieldset full-field hidden"><legend>Cálculo automático con la metodología de esta versión</legend><div class="form-grid compact-grid"><div class="field"><label for="iperc-risk-initial-probability">Probabilidad inicial *</label><input id="iperc-risk-initial-probability" name="initial_probability" data-risk-factor type="number" step="1"></div><div class="field"><label for="iperc-risk-initial-severity">Severidad inicial *</label><input id="iperc-risk-initial-severity" name="initial_severity" data-risk-factor type="number" step="1"></div><div class="field"><label for="iperc-risk-residual-probability">Probabilidad residual *</label><input id="iperc-risk-residual-probability" name="residual_probability" data-risk-factor type="number" step="1"></div><div class="field"><label for="iperc-risk-residual-severity">Severidad residual *</label><input id="iperc-risk-residual-severity" name="residual_severity" data-risk-factor type="number" step="1"></div></div><div id="iperc-calculation-preview" class="iperc-calculation-preview">Completa los factores para calcular los niveles inicial y residual.</div></fieldset>
+                <div id="iperc-risk-score-unavailable" class="iperc-score-unavailable full-field">Para calcular niveles, configura la metodología de la empresa y crea una nueva versión de esta matriz. Las valoraciones históricas en texto se conservan y no se convierten automáticamente.</div>
+                <div class="field"><label for="iperc-risk-initial-rating">Nota de valoración inicial (opcional)</label><input id="iperc-risk-initial-rating" name="initial_rating" placeholder="Nota o valor histórico, sin conversión"></div>
+                <div class="field"><label for="iperc-risk-residual-rating">Nota de valoración residual (opcional)</label><input id="iperc-risk-residual-rating" name="residual_rating" placeholder="Nota o valor histórico, sin conversión"></div>
                 <div class="field full-field"><label for="iperc-risk-additional-controls">Controles / medidas adicionales</label><textarea id="iperc-risk-additional-controls" name="additional_controls" rows="2"></textarea></div>
                 <div class="field"><label for="iperc-risk-responsible">Responsable de acción</label><input id="iperc-risk-responsible" name="responsible"></div>
                 <div class="field"><label for="iperc-risk-due-date">Fecha de seguimiento</label><input id="iperc-risk-due-date" name="due_date" type="date"></div>
@@ -235,8 +265,14 @@
               </div>
               <div class="form-actions"><button id="cancel-iperc-risk-text" type="button" class="button secondary">Cancelar</button><button class="button primary" type="submit">Guardar riesgo</button></div>
             </form>
-            <div class="table-scroll iperc-risk-table-wrap"><table class="iperc-risk-table"><thead><tr><th>PUESTO / ACTIVIDAD</th><th>PELIGRO / RIESGO</th><th>CONTROLES</th><th>VALORACIÓN</th><th>RESPONSABLE / FECHA</th><th>ESTADO</th><th class="actions-cell">ACCIONES</th></tr></thead><tbody id="iperc-risk-table-body"></tbody></table></div>
+            <div class="table-scroll iperc-risk-table-wrap"><table class="iperc-risk-table"><thead><tr><th>PUESTO / ACTIVIDAD</th><th>PELIGRO / RIESGO</th><th>CONTROLES</th><th>RIESGO INICIAL / RESIDUAL</th><th>RESPONSABLE / FECHA</th><th>ESTADO</th><th class="actions-cell">ACCIONES</th></tr></thead><tbody id="iperc-risk-table-body"></tbody></table></div>
             <div id="iperc-risk-empty" class="empty-state hidden"><span class="empty-symbol">＋</span><b>Esta versión aún no tiene riesgos estructurados</b><p>Agrega peligros y controles por puesto. También puedes empezar con una matriz en archivo.</p><button id="iperc-empty-risk" type="button" class="button secondary small-button">＋ Añadir riesgo</button></div>
+          </section>
+          <section id="sst-compliance-section" class="panel legal-compliance-panel">
+            <div class="panel-heading"><div><span class="panel-kicker">AUTOEVALUACIÓN · SST GENERAL DEL PERÚ</span><h3>Revisión de requisitos legales</h3><p id="legal-catalog-meta" class="iperc-selected-meta">Catálogo base; revisa el alcance para tu empresa.</p></div><span class="legal-self-assessment-badge">NO ES CERTIFICACIÓN LEGAL</span></div>
+            <div class="legal-compliance-notice">Registra el estado por requisito con una referencia de evidencia. Nexo no lee ni valida documentos, no confirma la aplicación de todas las normas sectoriales y no emite una conclusión legal certificada. No adjuntes documentos: no ingreses datos clínicos, resultados de EMO, diagnósticos ni historias médicas.</div>
+            <div id="legal-compliance-summary" class="legal-compliance-summary"></div>
+            <div id="legal-requirement-list" class="legal-requirement-list"></div>
           </section>
           <div id="iperc-legacy-note" class="iperc-legacy-note hidden">Hay registros IPERC anteriores en formato general. Se conservan debajo; puedes abrirlos para consultarlos o descargarlos.</div>
         </div>
